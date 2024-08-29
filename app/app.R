@@ -93,14 +93,14 @@ ui <- dashboardPage(
 # Define server logic
 server <- function(input, output, session) {
   
-  # Reactive expression to get the model and parameters for the selected species
-  selected_species <- reactive({
-    lapply(input$species, function(sp) species_models[[sp]])
-  })
-  
   # Initialize reactive values for model parameters and body weights for each species
   reactive_params <- reactiveValues()
-  reactive_bw <- reactiveValues()
+  reactive_bw <- reactiveValues(
+    Rat = 0.3,
+    Mouse = 0.025,
+    Human = 80,
+    Monkey = 8
+  )
   
   observe({
     for (sp in input$species) {
@@ -115,24 +115,48 @@ server <- function(input, output, session) {
     }
   })
   
-  # Dynamically generate UI inputs for body weight for each species
+  # Corrected renderUI for body weight inputs with debugging
+  # Corrected renderUI for body weight inputs
   output$body_weight_inputs <- renderUI({
-    req(input$species)
+    print("Rendering body weight inputs...")
+    print(input$species)  # Debugging output
+    
+    # Manually check if input$species is valid
+    if (is.null(input$species) || length(input$species) == 0) {
+      return(NULL)
+    }
+    
+    # If input$species is valid, create the UI elements
     lapply(input$species, function(sp) {
-      numericInput(paste0("bw_", sp), label = paste(sp, "Body Weight (kg)"), value = reactive_bw[[sp]])
+      print(paste("Creating input for species:", sp))  # Debugging output
+      numericInput(
+        inputId = paste0("bw_", sp), 
+        label = paste(sp, "Body Weight (kg)"), 
+        value = reactive_bw[[sp]]  # Ensure `reactive_bw` is available as a reactive list
+      )
     })
   })
   
-  # Render the editable DataTables for model parameters
+  # Corrected renderUI for species parameters
   output$species_params <- renderUI({
-    req(input$species)
+    print("Rendering species parameters...")
+    print(input$species)  # Debugging output
+    
+    # Manually check if input$species is valid
+    if (is.null(input$species) || length(input$species) == 0) {
+      return(NULL)
+    }
+    
+    # If input$species is valid, create the UI elements
     lapply(input$species, function(sp) {
+      print(paste("Creating parameters for species:", sp))  # Debugging output
       box(
         title = paste(sp, "Model Parameters"), status = "primary", solidHeader = TRUE, width = 12,
         DTOutput(paste0("params_", sp))
       )
     })
   })
+  
   
   observe({
     for (sp in input$species) {
@@ -199,9 +223,15 @@ server <- function(input, output, session) {
   
   # Calculate summary statistics (C_max, C_TWA, AUC) for a specified time period
   summary_stats <- reactive({
-    req(simulation_results())
+    print("Calculating summary statistics...")
     
-    simulation_results() %>%
+    # Manually check if the simulation results exist and are valid
+    sim_results <- simulation_results()
+    if (is.null(sim_results) || nrow(sim_results) == 0) {
+      return(NULL)
+    }
+    
+    sim_results %>%
       group_by(Species) %>%
       summarize(
         C_max = max(Concentration),
@@ -214,22 +244,27 @@ server <- function(input, output, session) {
       ungroup()
   })
   
+  
   # Function to calculate AUC using the trapezoidal rule
   calculate_auc <- function(time, concentration) {
-    # Ensure the time and concentration vectors are of the same length and sorted by time
     stopifnot(length(time) == length(concentration))
     time <- sort(time)
     
-    # Apply the trapezoidal rule
     auc <- sum((concentration[-1] + concentration[-length(concentration)]) / 2 * diff(time))
     return(auc)
   }
   
   # Render the concentration plot
   output$concentrationPlot <- renderPlotly({
-    req(simulation_results())
+    print("Rendering concentration plot...")
     
-    plot_data <- simulation_results()
+    # Manually check if the simulation results exist and are valid
+    sim_results <- simulation_results()
+    if (is.null(sim_results) || nrow(sim_results) == 0) {
+      return(NULL)
+    }
+    
+    plot_data <- sim_results
     
     p <- ggplot(plot_data, aes(x = Time, y = Concentration, color = Species)) +
       geom_line(size = 1) +
@@ -241,11 +276,20 @@ server <- function(input, output, session) {
     ggplotly(p, tooltip = c("x", "y", "color"))
   })
   
+  
   # Render the summary statistics table with export options
   output$summary_table <- renderDT({
-    req(summary_stats())
+    print("Rendering summary table...")
     
-    datatable(summary_stats(),
+    # Get the summary statistics
+    summary <- summary_stats()
+    
+    # Manually check if the summary statistics exist and are valid
+    if (is.null(summary) || nrow(summary) == 0) {
+      return(NULL)
+    }
+    
+    datatable(summary,
               extensions = 'Buttons',
               options = list(
                 pageLength = 10,
@@ -257,6 +301,7 @@ server <- function(input, output, session) {
     ) %>%
       formatSignif(columns = c("C_max", "AUC", "C_TWA"), digits = 4)
   })
+  
 }
 
 # Run the app
