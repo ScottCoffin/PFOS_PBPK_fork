@@ -29,17 +29,19 @@ mod <- mcode ("Ratpbpk", RatPBPK.code)
 
 ## input data set for model calibration/ oral
 
-Obs.A1 <-read.csv(file="A1.csv")        # A1 dataset: 4.2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Chang et al., (2012) 
+getwd()
+
+Obs.A1 <-read.csv(file="Additional files/Datasets/Rat/A1.csv")        # A1 dataset: 4.2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Chang et al., (2012) 
 names(Obs.A1) = c("Time", "CA")
 
-Obs.A2 <-read.csv(file="A2.csv")        # A2 dataset: 2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Luccisano et al., (2012) from 3M unpublished data
+Obs.A2 <-read.csv(file="Additional files/Datasets/Rat/A2.csv")        # A2 dataset: 2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Luccisano et al., (2012) from 3M unpublished data
 names(Obs.A2) = c("Time", "CA")
 
-Obs.A3 <-read.csv(file="A3.csv")        # A3 dataset: 2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Luccisano et al., (2012) from 3M unpublished data
+Obs.A3 <-read.csv(file="Additional files/Datasets/Rat/A3.csv")        # A3 dataset: 2 mg/kg/single oral dose/matrix: plasma (Unit: ug/ml)/ Luccisano et al., (2012) from 3M unpublished data
 names(Obs.A3) = c("Time", "CA")
 
 ## input data set for model calibration/ IV
-Obs.A4 <- read.csv(file="A4.csv")       # A4 dataset: 4.2 mg/kg/single iv dose/matrix: urine (%Dose)/ Luccisano et al., (2012) from Johnson et al., 1979
+Obs.A4 <- read.csv(file="Additional files/Datasets/Rat/A4.csv")       # A4 dataset: 4.2 mg/kg/single iv dose/matrix: urine (%Dose)/ Luccisano et al., (2012) from Johnson et al., 1979
 names(Obs.A4) = c("Time", "Curine")
 
 ## Define the prediction function (for least squres fit using levenberg-marquart algorithm)
@@ -256,16 +258,16 @@ plot.A4=
 ###################################################################################################################################
 
 ## lnput data sets
-Obs.B1 <- read.csv(file ="B1.csv")      # B1 dataset from 3M unpublished data  
+Obs.B1 <- read.csv(file ="Additional files/Datasets/Rat/B1.csv")      # B1 dataset from 3M unpublished data  
 names(Obs.B1)=c("Time", "CA")
 
-Obs.B2 <- read.csv(file ="B2.csv")      # B2 dataset from Chang et al. (2012)
+Obs.B2 <- read.csv(file ="Additional files/Datasets/Rat/B2.csv")      # B2 dataset from Chang et al. (2012)
 names(Obs.B2)=c("Time", "Curine")
 
-Obs.B3 <- read.csv(file ="B3.csv")      # B3 dataset from Kim et al., 2016    
+Obs.B3 <- read.csv(file ="Additional files/Datasets/Rat/B3.csv")      # B3 dataset from Kim et al., 2016    
 names(Obs.B3)=c("Time", "CA")
 
-Obs.B4 <- read.csv (file ="B4.csv")     # B4 datasets from 3M unpublished data 
+Obs.B4 <- read.csv (file ="Additional files/Datasets/Rat/B4.csv")     # B4 datasets from 3M unpublished data 
 names(Obs.B4)=c("Time", "CA")
 
 
@@ -545,11 +547,14 @@ saveRDS(MCMC[[1]],file ='rat.MCMC.rds')
 saveRDS(combinedchains,file='rat.comb.rds')
 
 
+#### START FROM HERE ####
+MCMC <- readRDS("Additional files/Results/Workplace/rat.MCMC.rds")
+
 ## Make the plot using MCMC parameters
 ## single oral and iv
-Sim.mcmc.A    = mcmc.fun  (par=MCMC[[1]]$bestpar,pred=TRUE)$out.A
-Sim.mcmc.B    = mcmc.fun  (par=MCMC[[1]]$bestpar,pred=TRUE)$out.B
-Sim.mcmc.C    = mcmc.fun  (par=MCMC[[1]]$bestpar,pred=TRUE)$out.C
+Sim.mcmc.A    = mcmc.fun  (par=MCMC$bestpar,pred=TRUE)$out.A
+Sim.mcmc.B    = mcmc.fun  (par=MCMC$bestpar,pred=TRUE)$out.B
+Sim.mcmc.C    = mcmc.fun  (par=MCMC$bestpar,pred=TRUE)$out.C
 
 df.sim.mcmc.B1    = cbind.data.frame (Time=Sim.mcmc.A$Time,CA=Sim.mcmc.A$CA)
 
@@ -590,10 +595,3 @@ Plot.B1
 Plot.B2
 Plot.B3
 Plot.B4
-
-
-
-
-
-
-
