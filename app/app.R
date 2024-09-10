@@ -5,6 +5,7 @@ library(DT)
 library(ggplot2)
 library(mrgsolve)
 library(dplyr)
+getwd()
 
 # Load PBPK models and parameters for different species
 RatPBPK.code <- readRDS("../Additional files/Results/Workplace/ratPBPK.RDS")
@@ -33,13 +34,13 @@ monkey_best <- monkey_params$bestpar
 species_models <- list(
   Rat = list(model = ratpbpk, params = rat_best, default_bw = 0.3),   # 0.3 kg for rat
   Mouse = list(model = micepbpk, params = mouse_best, default_bw = 0.025), # 0.025 kg for mouse
-  Human = list(model = humanpbpk, params = human_best, default_bw = 80),  # 80 kg for human
-  Monkey = list(model = monkeypbpk, params = monkey_best, default_bw = 8)  # 8 kg for monkey
+  Human = list(model = humanpbpk, params = human_best, default_bw = 82.3),  # 82.3 kg for human
+  Monkey = list(model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
 )
 
 # Define UI
 ui <- dashboardPage(
-  dashboardHeader(title = "PBPK Model Simulation"),
+  dashboardHeader(title = "PBPK Model Simulation (PFOS, Males Only, Oral)"),
   
   dashboardSidebar(
     sidebarMenu(
@@ -53,6 +54,11 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = "inputs",
               fluidRow(
+                box(title = "PFOS PBPK Model Info", status = "primary", solidHeader = TRUE, width = 12,
+                    p("This RShiny app allows users to run the optimized models from", a("Chou & Lin et al. (2019). Bayesian evaluation of a physiologically based pharmacokinetic (PBPK) model for perfluorooctane sulfonate (PFOS) to characterize the interspecies uncertainty between mice, rats, monkeys, and humans: Development and performance verification",
+                                                                                         href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X")),
+                    p("The model was only optimized for males and an oral route of exposure. The model consists of four organ compartments (plasma, liver, kidney, and rest of body). For more information, please refer to their publication."),
+                    ),
                 box(title = "Input Parameters", status = "primary", solidHeader = TRUE, width = 12,
                     selectInput("species", "Select Species", 
                                 choices = c("Rat", "Mouse", "Human", "Monkey"), 
@@ -98,8 +104,8 @@ server <- function(input, output, session) {
   reactive_bw <- reactiveValues(
     Rat = 0.3,
     Mouse = 0.025,
-    Human = 80,
-    Monkey = 8
+    Human = 82.3,
+    Monkey = 3.5
   )
   
   observe({
@@ -116,7 +122,6 @@ server <- function(input, output, session) {
   })
   
   # Corrected renderUI for body weight inputs with debugging
-  # Corrected renderUI for body weight inputs
   output$body_weight_inputs <- renderUI({
     print("Rendering body weight inputs...")
     print(input$species)  # Debugging output
@@ -156,6 +161,11 @@ server <- function(input, output, session) {
       )
     })
   })
+  
+  # # Render the editable data table
+  # output$dose_table <- renderDT({
+  #   datatable(reactive_doses(), editable = TRUE, options = list(pageLength = 5))
+  # })
   
   
   observe({
