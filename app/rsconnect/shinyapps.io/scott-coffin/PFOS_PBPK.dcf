@@ -1,0 +1,12 @@
+name: PFOS_PBPK
+title: PFOS_PBPK
+username: scott-coffin
+account: scott-coffin
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12697573
+bundleId: 9094711
+url: https://scott-coffin.shinyapps.io/PFOS_PBPK/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
