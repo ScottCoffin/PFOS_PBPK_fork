@@ -548,7 +548,7 @@ saveRDS(combinedchains,file='rat.comb.rds')
 
 
 #### START FROM HERE ####
-MCMC <- readRDS("Additional files/Results/Workplace/rat.MCMC.rds")
+MCMC <- readRDS("models/rat_mcmc.rds")
 
 ## Make the plot using MCMC parameters
 ## single oral and iv

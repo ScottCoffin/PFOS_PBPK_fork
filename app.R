@@ -79,12 +79,16 @@ ui <- dashboardPage(
       tabItem(tabName = "results",
               fluidRow(
                 box(title = "Concentration Plot", status = "primary", solidHeader = TRUE, width = 12,
-                    plotlyOutput("concentrationPlot"))
-              ),
+                    plotlyOutput("concentrationPlot")),
+                br(),
+                h3("Estimate serum concentration at a specific time point:"),
+                numericInput("time_point", "Time Point (hours)", value = NULL),
+                tableOutput("concentration_at_time")
+                ),
               fluidRow(
-                box(title = "Summary Statistics", status = "primary", solidHeader = TRUE, width = 12,
+                box(title = "Summary Statistics (mg/L)", status = "primary", solidHeader = TRUE, width = 12,
                     DTOutput("summary_table"))
-              )
+              ),
       ),
       
       tabItem(tabName = "parameters",
@@ -229,6 +233,32 @@ server <- function(input, output, session) {
         input$dose_frequency_per_day
       )
     }))
+  })
+  
+  #update time point for observed serum level to be 24 hr following last dose
+  observe({
+    # Update the time_point input when exposure_duration_days is changed
+    updateNumericInput(session, "time_point",
+                       value = (input$exposure_duration_days * 24) + 24)
+  })
+  
+  
+  # Extract concentration at specific time point
+  concentration_at_time <- reactive({
+    sim_results <- simulation_results()
+    if (is.null(sim_results) || nrow(sim_results) == 0) {
+      return(NULL)
+    }
+    
+    # Filter the simulation result at the specified time point
+    sim_results %>%
+      filter(Time == input$time_point / 24) %>%
+      select(Species, Concentration)
+  })
+  
+  # Display concentration at the specified time point
+  output$concentration_at_time <- renderTable({
+    concentration_at_time()
   })
   
   # Calculate summary statistics (C_max, C_TWA, AUC) for a specified time period
