@@ -5,8 +5,9 @@ library(DT)
 library(ggplot2)
 library(mrgsolve)
 library(dplyr)
-getwd()
+library(purrr)
 
+#### PBPK Models ####
 # Load PBPK models and parameters for different species
 RatPBPK.code <- readRDS("models/ratPBPK.RDS")
 ratpbpk <- mcode("Ratpbpk", RatPBPK.code)
@@ -38,7 +39,49 @@ species_models <- list(
   Monkey = list(model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
 )
 
-# Define UI
+
+#### Simple PK Models ####
+# Default parameters for the simpler PK models
+default_params <- list(
+  Dose_mg_kg_d = 100,   # Total daily dose (mg/kg)
+  HLe_invivo = 6,       # Half-life in hours
+  tau_hr = 12,          # Dosing interval in hours
+  Vd = 50,              # Volume of distribution (L/kg)
+  kabs = 0.5,           # Absorption rate constant (1/h)
+  exposure_duration_hr = 72,  # Exposure duration in hours
+  n_extra_time = 48     # Extra time to simulate after exposure (hours)
+)
+
+# Simplified PK models
+simplified_conc <- function(D_per_dose, Vd, ke, tau, n, t, exposure_duration_hr) {
+  if (t <= exposure_duration_hr) {
+    doses_given <- floor(t / tau)
+    C <- (D_per_dose / Vd) * ((1 - exp(-doses_given * ke * tau)) / (1 - exp(-ke * tau))) * exp(-ke * (t %% tau))
+  } else {
+    time_since_last_dose <- t - exposure_duration_hr
+    C <- (D_per_dose / Vd) * exp(-ke * time_since_last_dose)
+  }
+  return(C)
+}
+
+full_conc <- function(D_per_dose, Vd, ke, ka, tau, n, t, exposure_duration_hr) {
+  if (t <= exposure_duration_hr) {
+    doses_given <- floor(t / tau)
+    C <- (D_per_dose * ka) / (Vd * (ka - ke)) * (
+      (exp(-ke * (t %% tau)) / (1 - exp(-ke * tau))) - 
+        (exp(-ka * (t %% tau)) / (1 - exp(-ka * tau)))
+    )
+  } else {
+    time_since_last_dose <- t - exposure_duration_hr
+    C <- (D_per_dose * ka) / (Vd * (ka - ke)) * (
+      (exp(-ke * time_since_last_dose)) - 
+        (exp(-ka * time_since_last_dose))
+    )
+  }
+  return(C)
+}
+
+############################# UI ###################################
 ui <- dashboardPage(
   dashboardHeader(title = "PBPK Model Simulation (PFOS, Males Only, Oral)"),
   
@@ -100,7 +143,7 @@ ui <- dashboardPage(
   )
 )
 
-# Define server logic
+#################################### SERVER #######################
 server <- function(input, output, session) {
   
   # Initialize reactive values for model parameters and body weights for each species
@@ -165,12 +208,6 @@ server <- function(input, output, session) {
       )
     })
   })
-  
-  # # Render the editable data table
-  # output$dose_table <- renderDT({
-  #   datatable(reactive_doses(), editable = TRUE, options = list(pageLength = 5))
-  # })
-  
   
   observe({
     for (sp in input$species) {
@@ -255,7 +292,8 @@ server <- function(input, output, session) {
       filter(Time == input$time_point / 24) %>%
       select(Species, Concentration)
   })
-  
+
+### Concentration-time-point table ####
   # Display concentration at the specified time point
   output$concentration_at_time <- renderTable({
     concentration_at_time()
@@ -293,7 +331,8 @@ server <- function(input, output, session) {
     auc <- sum((concentration[-1] + concentration[-length(concentration)]) / 2 * diff(time))
     return(auc)
   }
-  
+
+###### Concentration-Time Plot #####
   # Render the concentration plot
   output$concentrationPlot <- renderPlotly({
     print("Rendering concentration plot...")
@@ -316,7 +355,7 @@ server <- function(input, output, session) {
     ggplotly(p, tooltip = c("x", "y", "color"))
   })
   
-  
+##### Summary Stats Table #####  
   # Render the summary statistics table with export options
   output$summary_table <- renderDT({
     print("Rendering summary table...")
@@ -342,7 +381,11 @@ server <- function(input, output, session) {
       formatSignif(columns = c("C_max", "AUC", "C_TWA"), digits = 4)
   })
   
-}
+} # close the app
+
+
+
+
 
 # Run the app
 shinyApp(ui = ui, server = server)
