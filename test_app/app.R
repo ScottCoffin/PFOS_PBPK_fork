@@ -154,7 +154,7 @@ ui <- dashboardPage(
                                 rHandsontableOutput("params_table")  # Dynamically generate UI for each species' parameters
                                 ),
                        tabPanel(title = "PBPK Models",
-                                uiOutput("species_params")  # Dynamically generate UI for each species' parameters
+                                uiOutput("species_sex_params_grid")  # Dynamically generate UI for each species' parameters
                        ),
                        )
                 )
@@ -182,6 +182,9 @@ ui <- dashboardPage(
 server <- function(input, output, session) {
 
 ######## Experiment data table #####  
+  # Reactive value to store experiment table data
+  experiment_data <- reactiveVal(initial_table_data)
+  
   # Render editable datatable
   output$experiment_table <- renderRHandsontable({
     rhandsontable(experiment_data()) %>% 
@@ -397,108 +400,131 @@ server <- function(input, output, session) {
       hot_cols(renderer = color_renderer)  # Apply the custom renderer to all columns
   })
   
-###### PBPK Params Table ####
-  # Reactive values for model parameters and body weights
+############################### PBPK Params Table #############################
+  # Reactive values for model parameters
   reactive_params <- reactiveValues()
-  reactive_bw <- reactiveValues(
-    Rat = 0.3,
-    Mouse = 0.025,
-    Human = 82.3,
-    Monkey = 3.5
-  )
   
-  # Observe experiment table and update UI based on conditions
-  observe({
-    table_data <- experiment_data()
-    matching_rows <- subset(table_data, 
-                            PFAS == "PFOS" & 
-                              Sex == "Male" & 
-                              Route == "Oral" & 
-                              Model_Type == "PBPK")
+  # Observe experiment table and dynamically update parameter tables for each species/sex
+  observeEvent(experiment_data(), {
+    shiny::req(experiment_data())  # Ensure experiment_data() is available
     
-    for (sp in unique(matching_rows$Species)) {
-      if (!is.null(species_models[[sp]]) && is.null(reactive_params[[sp]])) {
-        params <- species_models[[sp]]$best_params
-        reactive_params[[sp]] <- data.frame(
-          Parameter = names(params),
-          Value = signif(sapply(params, exp), 4)
-        )
-        reactive_bw[[sp]] <- species_models[[sp]]$default_bw
+    table_data <- experiment_data()
+    pbpk_data <- subset(table_data, Model_Type == "PBPK")
+    selected_pfas <- unique(pbpk_data$PFAS)
+    
+    # Loop through each unique Species/Sex combination in pbpk_data
+    for (sp in unique(pbpk_data$Species)) {
+      for (sx in unique(pbpk_data$Sex)) {
+        # Filter data for current species and sex
+        species_sex_data <- subset(pbpk_data, Species == sp & Sex == sx)
+        params <- if (!is.null(species_models[[sp]])) species_models[[sp]]$best_params else NULL
+        
+        # Initialize parameter table if it doesn't already exist
+        if (is.null(reactive_params[[paste0(sp, "_", sx)]])) {
+          reactive_params[[paste0(sp, "_", sx)]] <- data.frame(
+            Parameter = if (!is.null(params)) names(params) else character(0),
+            stringsAsFactors = FALSE
+          )
+        }
+        
+        # Populate columns for each selected PFAS
+        for (pfas in selected_pfas) {
+          is_supported_model <- pfas == "PFOS" && 
+            any(species_sex_data$PFAS == "PFOS" & species_sex_data$Sex == sx)
+          
+          if (is_supported_model && !is.null(params)) {
+            reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- signif(sapply(params, exp), 4)
+          } else {
+            reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- NA
+          }
+        }
       }
     }
   })
   
-  # Render UI for body weight inputs
-  output$body_weight_inputs <- renderUI({
-    #req(input$experiment_table)
+  # Render UI for species/sex parameter tables in a grid layout
+  output$species_sex_params_grid <- renderUI({
+    shiny::req(experiment_data())
     table_data <- experiment_data()
-    matching_rows <- subset(table_data, 
-                            PFAS == "PFOS" & 
-                              Sex == "Male" & 
-                              Route == "Oral" & 
-                              Model_Type == "PBPK")
-    if (nrow(matching_rows) == 0) return(NULL)
+    pbpk_data <- subset(table_data, Model_Type == "PBPK")
     
-    lapply(unique(matching_rows$Species), function(sp) {
-      numericInput(
-        inputId = paste0("bw_", sp), 
-        label = paste(sp, "Body Weight (kg)"), 
-        value = reactive_bw[[sp]]
-      )
-    })
-  })
-  
-  # Render UI for species parameters
-  output$species_params <- renderUI({
-  #  req(input$experiment_table)
-    table_data <- experiment_data()
-    matching_rows <- subset(table_data, 
-                            PFAS == "PFOS" & 
-                              Sex == "Male" & 
-                              Route == "Oral" & 
-                              Model_Type == "PBPK")
-    if (nrow(matching_rows) == 0) return(NULL)
+    if (nrow(pbpk_data) == 0) return(NULL)
     
-    lapply(unique(matching_rows$Species), function(sp) {
-      box(
-        title = paste(sp, "Model Parameters"), status = "primary", solidHeader = TRUE, width = 12,
-        DTOutput(paste0("params_", sp))
-      )
-    })
-  })
-  
-  # Render and update species-specific parameter tables
-  observe({
-    for (sp in names(species_models)) {
-      local({
-        species <- sp
-        output[[paste0("params_", species)]] <- renderDT({
-        #  req(reactive_params[[species]])
-          datatable(
-            reactive_params[[species]], 
-            editable = TRUE, 
-            options = list(pageLength = 10, autoWidth = TRUE),
-            rownames = FALSE
+    species_sex_combinations <- unique(paste(pbpk_data$Species, pbpk_data$Sex, sep = "_"))
+    
+    # Create a list of fluidRows with each row containing two columns
+    ui_elements <- list()
+    for (i in seq(1, length(species_sex_combinations), by = 2)) {
+      row_elements <- list()
+      
+      for (j in 0:1) {
+        index <- i + j
+        if (index <= length(species_sex_combinations)) {
+          species_sex <- species_sex_combinations[index]
+          sp_sex_split <- strsplit(species_sex, "_")[[1]]
+          species <- sp_sex_split[1]
+          sex <- sp_sex_split[2]
+          
+          row_elements[[j + 1]] <- column(
+            width = 6,
+            box(
+              title = paste(species, sex, "Model Parameters"), 
+              status = "primary", 
+              solidHeader = TRUE, 
+              width = 12,
+              DTOutput(paste0("params_", species, "_", sex))
+            )
           )
+        }
+      }
+      
+      # Add each pair of species/sex tables to a new row
+      ui_elements[[length(ui_elements) + 1]] <- fluidRow(row_elements)
+    }
+    
+    # Return the complete list of UI elements for grid layout
+    ui_elements
+  })
+  
+  # Render and update species/sex-specific parameter tables
+  observe({
+    for (sp in unique(initial_table_data$Species)) {
+      for (sx in unique(initial_table_data$Sex)) {
+        local({
+          species <- sp
+          sex <- sx
+          output[[paste0("params_", species, "_", sex)]] <- renderDT({
+            shiny::req(reactive_params[[paste0(species, "_", sex)]])
+            datatable(
+              reactive_params[[paste0(species, "_", sex)]], 
+              editable = TRUE, 
+              options = list(pageLength = 10, autoWidth = TRUE),
+              rownames = FALSE
+            )
+          })
         })
-      })
+      }
     }
   })
   
   # Update reactive parameters when the DataTable is edited
   observe({
-    for (sp in names(species_models)) {
-      local({
-        species <- sp
-        observeEvent(input[[paste0("params_", species, "_cell_edit")]], {
-          info <- input[[paste0("params_", species, "_cell_edit")]]
-          params <- reactive_params[[species]]
-          params[info$row, info$col] <- as.numeric(info$value)
-          reactive_params[[species]] <- params
+    for (sp in unique(initial_table_data$Species)) {
+      for (sx in unique(initial_table_data$Sex)) {
+        local({
+          species <- sp
+          sex <- sx
+          observeEvent(input[[paste0("params_", species, "_", sex, "_cell_edit")]], {
+            info <- input[[paste0("params_", species, "_", sex, "_cell_edit")]]
+            params <- reactive_params[[paste0(species, "_", sex)]]
+            params[info$row, info$col] <- as.numeric(info$value)
+            reactive_params[[paste0(species, "_", sex)]] <- params
+          })
         })
-      })
+      }
     }
   })
+
 
   
 } # close server
