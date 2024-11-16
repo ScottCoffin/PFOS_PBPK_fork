@@ -247,11 +247,22 @@ server <- function(input, output, session) {
     ex <- ev(ID = 1, amt = dose_mg, ii = interval_between_doses, addl = total_doses - 1, cmt = "AST", replicate = FALSE)
     tgrid <- tgrid(0, interval_hours * (exposure_duration_days - 1) + 24 * 100, 1)
     
+    print(head(pars))
+    
+    
     output <- model %>%
       param(pars) %>%
       Req(Plasma) %>%
       update(atol = 1E-8, maxsteps = 10000) %>%
       mrgsim_d(data = ex, tgrid = tgrid)
+    
+    cat("Debugging inputs:\n")
+    cat("Dose:", dose_mg, "mg/kg\n")
+    cat("Body Weight:", bw, "kg\n")
+    cat("Interval:", interval_hours, "hours\n")
+    cat("Exposure Duration:", exposure_duration_days, "hours\n")
+    # cat("ex:", ex, "\n")
+    # cat("tgrid:", tgrid, "\n")
     
     data.frame(Species = species, Time = output$time / 24, Concentration = signif(output$Plasma, 4))
   }
