@@ -1,0 +1,12 @@
+name: PFAS_PBPK_General
+title: PFAS_PBPK_General
+username: scott-coffin
+account: scott-coffin
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 13356967
+bundleId: 9371418
+url: https://oehha.shinyapps.io/PFAS_PBPK_General/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

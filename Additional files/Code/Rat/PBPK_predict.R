@@ -7,13 +7,22 @@ library(ggplot2)
 # Load the best-fit parameters --------------------------------------------
 # Replace with the actual file path where the MCMC results or best-fit parameters are stored.
 MCMC <- readRDS("Additional files/Results/Workplace/rat.MCMC.rds")
+ratpbpk <- mcode("Ratpbpk", RatPBPK.code)
 best_fit_params <- MCMC$bestpar
+
+
+output <- ratpbpk %>%
+  param(10^MCMC$bestpar) %>%
+  Req(Plasma) %>%
+  update(atol = 1E-8, maxsteps = 5000) %>%
+  mrgsim_d(data = ex, tgrid = tgrid)
 
 # Define the prediction function ------------------------------------------
 predict_plasma_concentration <- function(dose_mg_per_kg, interval_hours = 24, exposure_duration_days = 7, 
                                          dose_fraction = 1, dose_frequency_per_day = 1) {
   # Get out of log domain
   pars <- lapply(best_fit_params, exp)
+  pars <- setNames(pars, names(best_fit_params))  # Ensure names are preserved
   
   # Body weight of the rat (kg)
   BW <- 0.3

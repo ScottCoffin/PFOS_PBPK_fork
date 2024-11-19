@@ -1,0 +1,5 @@
+﻿PFAS,Species,Sex,Model_Type,Dose_mg_per_kg,Interval_Hours,Exposure_Duration_Days,Time_Serum_Collected_hr,Serum_Concentration_mg_L
+PFHxS,Rat,Female,single-compartment,10,24,30,744,5
+PFHxA,Mouse,Male,single-compartment,10,24,28,696,24
+PFOA,Rat,Male,two-compartment,1000,24,14,360,9
+PFOS,Rat,Male,PBPK,5,12,5,144,54
