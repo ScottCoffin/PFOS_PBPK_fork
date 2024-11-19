@@ -161,7 +161,13 @@ ui <- dashboardPage(
                     "run", 
                     label = HTML('<i class="fa fa-rocket"></i> Run Simulation'),
                     style = "color: #fff; background-color: #077336; border-color: #2e6da4; font-size: 20px; padding: 10px 15px;"
+                  ),
+                  actionButton(
+                    "reset", 
+                    label = HTML('<i class="fa fa-refresh"></i> Reset'),
+                    style = "color: #fff; background-color: #d9534f; border-color: #d43f3a; font-size: 16px; padding: 10px 15px;"
                   )
+                  
                 )
               )
       ),
@@ -221,6 +227,38 @@ ui <- dashboardPage(
 ################# SERVER ############
 
 server <- function(input, output, session) {
+  
+##### RESET BUTTON #####
+  observeEvent(input$reset, {
+    # Reset experiment data
+    experiment_data(initial_table_data)
+    # Reset params data
+    params_data(initial_params_data)
+    # Reset reactive_params (clear or reinitialize as needed)
+    reactive_params <- reactiveValues()  # Clears the reactiveValues object
+    # Reset validation message
+    validation_message(NULL)
+    
+    # Reset file inputs (using JavaScript)
+    runjs("
+    document.getElementById('upload_experiment_data').value = null;
+    document.getElementById('upload_params_data').value = null;
+  ")
+    
+    # Reset rendered handsontable
+    output$experiment_table <- renderRHandsontable({
+      rhandsontable(initial_table_data) %>% 
+        hot_cols(strict = TRUE, allowInvalid = FALSE)
+    })
+    
+    # Clear other outputs if necessary (example)
+    output$params_table <- renderTable(NULL)
+    
+    # Optionally reset other UI elements
+    # Reset button styles
+    runjs("document.getElementById('run').style.backgroundColor = '#077336';")
+  })
+  
   
   
 #################################################### Data entry and Upload #######################################
@@ -299,6 +337,8 @@ server <- function(input, output, session) {
   
   # Observe changes in experiment_data() and update processed_params
   observeEvent(experiment_data(), {
+    
+    shiny::req(experiment_data())
     # Filter experimental data to non-PBPK rows
     exp_data <- experiment_data() %>%
       filter(Model_Type != "PBPK") %>%  # Exclude PBPK rows for this table
