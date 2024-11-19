@@ -5,7 +5,7 @@ account: scott-coffin
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 12697573
-bundleId: 9387573
+bundleId: 9388029
 url: https://oehha.shinyapps.io/PFOS_PBPK/
 version: 1
 asMultiple: FALSE

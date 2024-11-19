@@ -11,6 +11,9 @@ library(rhandsontable)
 library(readr)
 library(readxl)
 library(tidyverse)
+library(cols4all)
+library(shinyjs)
+
 
 ############### STATIC DATA ############
 
@@ -59,20 +62,20 @@ species_models <- list(
 
 # Initialize editable table data with unrestricted input fields
 initial_table_data <- data.frame(
-  PFAS = factor(c("PFHxS", "PFHxA", "PFOA", "PFOS"),
+  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOS"),
                 levels = unique(tk_params$PFAS)),
-  Species = factor(c("Rat", "Mouse", "Rat", "Rat"),
+  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat"),
                    levels = c("Rat", "Mouse", "Human", "Monkey")),
-  Sex = factor(c("Female", "Male")),
+  Sex = factor(c("Female", "Male", "Female", "Female", "Male")),
   # Route = factor(c("Intravenous", "Intragastric", "Oral", "Oral") ,
   #                levels = c("Intravenous", "Intragastric", "Intraperitoneal", "Oral", "Dermal")),
-  Model_Type = factor(c("single-compartment", "single-compartment", "two-compartment", "PBPK")),
+  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "PBPK")),
   #Body_Weight_kg = c(0.3, 0.025, 0.3, 0.3),
-  Dose_mg_per_kg = c(100, 100, 100, 10),
-  Interval_Hours = as.integer(c(24, 24, 12, 12)),
-  Exposure_Duration_Days = as.integer(c(30, 10, 15, 25)),
-  Time_Serum_Collected_hr = as.integer(c(744, 264, 384, 600)),
-  Serum_Concentration_mg_L = as.numeric(c(NA, NA, NA, NA)),
+  Dose_mg_per_kg = c(175, 35, 62.5, 50, 2.5),
+  Interval_Hours = as.integer(c(24, 24, 24, 24, 24)),
+  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28)),
+  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696)),
+  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 173.7)),
   stringsAsFactors = FALSE
 )
 
@@ -151,6 +154,7 @@ ui <- dashboardPage(
                 br(),
                 uiOutput("params_check_message"), # Add dynamic message below button
                 br(),
+                useShinyjs(),
                 div(
                   style = "text-align: center;",
                   actionButton(
@@ -186,7 +190,10 @@ ui <- dashboardPage(
                 tabBox(width = 12,
                        tabPanel(title = "Time-Series Results",
                                 box(title = "Concentration Plot", status = "primary", solidHeader = TRUE, width = 12,
-                                    plotlyOutput("concentrationPlot")),
+                                    plotlyOutput("concentrationPlot"),
+                                    p("Download modeled time-series dataset:"),
+                                    downloadButton("download_time_conc", "Download Concentration Data")
+                                    ),
                                 box(title = "Modeled vs. Measured Concentration", status = "primary", solidHeader = TRUE, width = 12,
                         plotlyOutput("scatterPlot")),
                         fluidRow(
@@ -583,6 +590,7 @@ server <- function(input, output, session) {
     }
   }
   
+
   # Define dynamic required parameters
   required_params <- reactive({
     list(
@@ -626,16 +634,16 @@ server <- function(input, output, session) {
     }
   })
   
+  
   # Render the validation message in the UI
   output$params_check_message <- renderUI({
     shiny::req(validation_message())
     validation_message()
   })
   
-  # Ensure the output is updated even when the tab is not active
+    # Ensure the output is updated even when the tab is not active
   outputOptions(output, "params_check_message", suspendWhenHidden = FALSE)
   
-
   
   ### Observe and Force UI Re-rendering on Data Changes
   observeEvent(list(experiment_data(), params_data()), {
@@ -852,15 +860,91 @@ server <- function(input, output, session) {
       })) %>%
       filter(!is.na(modeled_concentration))
     
-    p <- ggplot(measured_conc, aes(x = modeled_concentration, y = Serum_Concentration_mg_L, color = Species)) +
-      geom_point(size = 2) +
+    # Calculate dynamic limits based on the data range
+    data_range <- range(
+      c(measured_conc$modeled_concentration, measured_conc$Serum_Concentration_mg_L),
+      na.rm = TRUE
+    )
+    
+    # Expand the range slightly for better visualization
+    expanded_limits <- c(
+      10^(floor(log10(min(data_range)))),
+      10^(ceiling(log10(max(data_range))))
+    )
+    
+    #make scatterplot
+    p <- ggplot(measured_conc, aes(x = modeled_concentration, 
+                                   y = Serum_Concentration_mg_L,
+                                   color = paste(PFAS, Species, #route,
+                                                 sep = " - "),
+                                   shape = Sex,
+                                   text = paste("Chemical:", PFAS, "<br>",
+                                                "Species:", Species, "<br>",
+                                                "Sex:", Sex, "<br>",
+                                                "Model:", Model_Type, "<br>",
+                                                "Dose:", Dose_mg_per_kg, "mg/kg-d", "<br>",
+                                                "Exposure Duration:", Exposure_Duration_Days, "days", "<br>",
+                                                "Measured Serum Concentration:", Serum_Concentration_mg_L, "mg/L", "<br>",
+                                                "Modeled Serum Concentration:", modeled_concentration, "mg/L", "<br>"))) +
+      geom_point(size = 2, alpha = 0.9) +
+      scale_x_log10(limits = expanded_limits) +
+      scale_y_log10(limits = expanded_limits) +
+      scale_color_discrete_c4a_cat(name = "") +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") + # Add 10x and 0.1x deviation lines
+      geom_abline(slope = 1, intercept = log10(10), linetype = "dotted", color = "gray70") +
+      geom_abline(slope = 1, intercept = log10(0.1), linetype = "dotted", color = "gray70") +
       labs(title = "Modeled vs. Measured Concentration",
            x = "Modeled Concentration (mg/L)",
            y = "Measured Concentration (mg/L)") +
-      theme_minimal()
+      theme_minimal() +
+      theme(legend.title = element_blank())
     
-    ggplotly(p)
+    ggplotly(p, tooltip = "text")
   })
+  
+  ###### Excel Sheet for downloading time-concentration data
+  output$download_time_conc <- downloadHandler(
+    filename = function() {
+      paste("time_series_concentration_data", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      # Load required library
+      library(openxlsx)
+      
+      # load data
+      sim_results <- simulation_results()
+      
+      # Prepare the data (assuming `sim_results` contains your time-series data)
+      time_series_data <- sim_results %>%
+        group_by(Species, Sex, PFAS, Model_Type) %>%
+        group_split()
+      
+      # Create a new workbook
+      wb <- createWorkbook()
+      
+      # Iterate over each group and add a sheet
+      for (group_data in time_series_data) {
+        # Define the sheet name (adjust as necessary to avoid overly long names)
+        sheet_name <- paste0(
+          group_data$Species[1], "-", 
+          group_data$Sex[1], "-", 
+          group_data$PFAS[1], "-", 
+          group_data$Model_Type[1]
+        )
+        
+        # Shorten sheet name if it exceeds Excel's limit
+        sheet_name <- substr(sheet_name, 1, 31)
+        
+        # Add the data to the workbook
+        addWorksheet(wb, sheet_name)
+        writeData(wb, sheet_name, group_data)
+      }
+      
+      # Save the workbook
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
+  
   
   ################################### Datatable of Time Point ###############
   # Display concentration at specified time points in a table

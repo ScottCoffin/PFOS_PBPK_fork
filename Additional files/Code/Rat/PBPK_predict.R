@@ -6,7 +6,7 @@ library(ggplot2)
 
 # Load the best-fit parameters --------------------------------------------
 # Replace with the actual file path where the MCMC results or best-fit parameters are stored.
-MCMC <- readRDS("Additional files/Results/Workplace/rat.MCMC.rds")
+#MCMC <- readRDS("Additional files/Results/Workplace/rat.MCMC.rds")
 ratpbpk <- mcode("Ratpbpk", RatPBPK.code)
 best_fit_params <- MCMC$bestpar
 
