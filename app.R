@@ -218,7 +218,19 @@ ui <- dashboardPage(
                                     ),
                                 ),
                        tabPanel(title = "PBPK Models",
-                                uiOutput("species_sex_params_grid")  # Dynamically generate UI for each species' parameters
+                                p("This RShiny app allows users to run the optimized models from", a("Chou & Lin et al. (2019). Bayesian evaluation of a physiologically based pharmacokinetic (PBPK) model for perfluorooctane sulfonate (PFOS) to characterize the interspecies uncertainty between mice, rats, monkeys, and humans: Development and performance verification",
+                                                                                                     href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X")),
+                                p("The model was only optimized for", strong("males"), "and via an oral route of exposure. The model consists of four organ compartments (plasma, liver, kidney, and rest of body). For more information, please refer to their publication. A schematic of the PBPK model framework from the publication is shown below:"),
+                                tags$a(
+                                  href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X",
+                                  target = "_blank",
+                                  tags$img(src = "fig1.PNG", width = "70%", alt = "PBPK Framework")
+                                ),
+                                br(),
+                                br(),
+                                h3("Customize PBPK Parameters"),
+                                p("This PBPK model is fully customizable (however not recommended)."),
+                                uiOutput("species_sex_params_grid"),  # Dynamically generate UI for each species' parameters
                        )
                 )
               )
