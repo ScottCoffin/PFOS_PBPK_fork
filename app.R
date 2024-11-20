@@ -13,6 +13,7 @@ library(readxl)
 library(tidyverse)
 library(cols4all)
 library(shinyjs)
+library(shinythemes)
 
 
 ############### STATIC DATA ############
@@ -127,29 +128,56 @@ calculate_auc <- function(time, concentration) {
 ########################## USER INTERFACE ################
 
 ui <- dashboardPage(
-  dashboardHeader(title = "PFAS PK Model Simulation"),
-  
+  skin = "green",
+  dashboardHeader(title = "OEHHA PFAS PK Modelling Application", titleWidth = 400),
   dashboardSidebar(
+    # Logo Image
+    tags$img(src="main_logo_drop.png", width = "75%", height = "75%", style = 'display: block; margin-left: auto; margin-right: auto;'),
+    tags$div("Logo Copyright OEHHA (2024)", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
+    tags$div("Contact: Scott.Coffin@oehha.ca.gov", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
+    br(),
+    br(),
     sidebarMenu(
       menuItem("Experiment Inputs", tabName = "inputs", icon = icon("flask")),
       menuItem("Model Parameters", tabName = "parameters", icon = icon("sliders-h")),
-      menuItem("Results", tabName = "results", icon = icon("chart-line"))
-      
+      menuItem("Results", tabName = "results", icon = icon("chart-line")),
+      menuItem("Additional OEHHA Apps", tabName = "additional_apps", icon = icon("cubes")),
+      # GitHub Link at the Bottom
+      div(style = "position: absolute; bottom: 12px; width: 100%;",
+          menuItem(
+            "GitHub Repository",
+            href = "https://github.com/ScottCoffin/PFOS_PBPK_fork",
+            icon = icon("github"),
+            newtab = TRUE # Open link in a new tab
+          )
+      )
     )
   ),
   
   dashboardBody(
+    tags$head(
+      tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
+    ),
     tabItems(
       ############ Input Tab Item #####
       tabItem(tabName = "inputs",
               fluidRow(
                 box(title = "Experimental Conditions", status = "primary", solidHeader = TRUE, width = 12,
                     p("Enter values for each species, PFAS chemical, model type, body weight, dose, interval, duration, and serum collection details."),
-                    p("Use the interactive table below or upload a file to proceed."),
+                    p(strong("Use the interactive table below or upload a file to proceed.")),
                     rHandsontableOutput("experiment_table"),
                     br(),
-                    p("Optional: upload data below:"),
-                    fileInput("upload_experiment_data", "Upload Experiment Data (.csv or .xlsx)", accept = c(".csv", ".xlsx"))
+                    div(style = "display: flex; justify-content: center; align-items: center; height: 100%;",
+                        box(status = "primary", width = 8,
+                            div(style = "text-align: center;",
+                                p(strong("Optionally")," you may upload experimental conditions data. Ensure that all of the above column names are present, and that all fields are valid (i.e., numeric values in numeric columns, factors in factor columns). A sample spreadsheet may be downloaded here that serves as a guide."),
+                                downloadButton("example_experiment_data", "Download Example Spreadsheet"),
+                                br(),
+                                br(),
+                                fileInput("upload_experiment_data", "Upload Experimental Conditions Table (.csv or .xlsx)", accept = c(".csv", ".xlsx"))
+                            )
+                        )
+                    )
                 ),
                 br(),
                 uiOutput("params_check_message"), # Add dynamic message below button
@@ -173,25 +201,32 @@ ui <- dashboardPage(
       ),
       ############ Parameters Tab Item #####
       tabItem(tabName = "parameters",
-              box(status = "primary", width = 12, collapsible = T,
               fluidRow(
-                tabBox(width = 12,
+                box(title = "PK Model Parameter Customization", status = "primary", solidHeader = TRUE, width = 12,
+                    tabBox(width = 12,
                        tabPanel(title = "Simple TK Models",
+                                p("Toxicokinetic parameter data for PFAS are from a curated large variety of data sources. Whenever possible, TK parameters from authoritative sources (e.g., ATSDR, USEPA) are used when multiple are available for a given chemical-species-sex combination. The full, compiled TK dataset may be viewed in the interactive datatable below."),
                                 rHandsontableOutput("params_table"),  # Dynamically generate UI for each species' parameters
                                 br(),
                                 p("Optionally upload TK params data:"),
-                                fileInput("upload_params_data", "Upload Parameters Data (.csv or .xlsx)", accept = c(".csv", ".xlsx"))
+                                fileInput("upload_params_data", "Upload Parameters Data (.csv or .xlsx)", accept = c(".csv", ".xlsx")),
+                                br(),
+                                br(),
+                                h3("Explore the full toxicokinetic dataset below:"),
+                                box(title = "Full TK Dataset", width = 12,
+                                    DTOutput("Full_TK_Datatable"),
+                                    ),
                                 ),
                        tabPanel(title = "PBPK Models",
                                 uiOutput("species_sex_params_grid")  # Dynamically generate UI for each species' parameters
-                       ),
                        )
                 )
+              )
               )
               ),
       ############ Results Tab Item #####
       tabItem(tabName = "results",
-              box(status = "primary", width = 12, collapsible = T,
+              box(title = "Results", status = "primary", width = 12, collapsible = T,solidHeader = TRUE,
               fluidRow(
                 tabBox(width = 12,
                        tabPanel(title = "Time-Series Results",
@@ -218,8 +253,130 @@ ui <- dashboardPage(
                        )
                 )
               )
-              )
-    )
+              ),
+      ################## Additional Apps Item #################
+      tabItem(
+        tabName = "additional_apps",
+        fluidRow(
+          box(
+            title = "Explore Additional OEHHA Applications",
+            status = "primary",
+            solidHeader = TRUE,
+            width = 12,
+            p("OEHHA offers several interactive applications to explore and analyze environmental and public health data. Below, you can find links, descriptions, and GitHub repositories for some of these tools."),
+            br(),
+            
+            # Application 1
+            box(
+              title = "OEHHA Chemical Data Explorer Application",
+              status = "info",
+              solidHeader = TRUE,
+              width = 12,
+              p("The OEHHA Chemical Data Explorer Tool helps users rapidly identify, visualize, and access chemical hazard, production, and exposure data."),
+              tags$a(
+                href = "https://oehha.shinyapps.io/MasterChemicalList/", 
+                target = "_blank", 
+                tags$span(
+                  icon("link"),
+                  style = "font-size: 2rem; font-weight: bold; color: #007bff;",
+                  " Visit the Chemical Data Explorer Tool"
+                )
+              ),
+              tags$span(
+                tags$a(
+                  href = "https://github.com/ScottCoffin/MasterChemicalList", 
+                  target = "_blank",
+                  icon("github"),
+                  style = "font-size: 2rem; font-weight: bold; color: #007bff; margin-left: 10px;",
+                  " View GitHub Repository"
+                )
+              ),
+              br(),
+              tags$a(
+                href = "https://oehha.shinyapps.io/MasterChemicalList/",
+                target = "_blank",
+                tags$img(src = "chemical_app_screenshot.png", width = "70%", alt = "Screenshot of OEHHA Chemical Data Explorer")
+              ),
+              br(),
+              br()
+            ),
+            
+            # Application 2
+            box(
+              title = "CalEnviroScreen",
+              status = "info",
+              solidHeader = TRUE,
+              width = 12,
+              p("The CalEnviroScreen 4.0 Tool provides data and maps on pollution burden and population characteristics across California to identify disadvantaged communities."),
+              tags$a(
+                href = "https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-40", 
+                target = "_blank", 
+                tags$span(
+                  icon("link"),
+                  style = "font-size: 2rem; font-weight: bold; color: #007bff;",
+                  " Visit the CalEnviroScreen 4.0 Tool"
+                )
+              ),
+              # tags$span(
+              #   tags$a(
+              #     href = "https://github.com/oehha/calenviroscreen", 
+              #     target = "_blank",
+              #     icon("github"),
+              #     style = "font-size: 2rem; font-weight: bold; color: #007bff; margin-left: 10px;",
+              #     " View GitHub Repository"
+              #   )
+              # ),
+              br(),
+              tags$a(
+                href = "https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-40",
+                target = "_blank",
+                tags$img(src = "calenviroscreen_screenshot.png", width = "70%", alt = "Screenshot of CalEnviroScreen 4.0")
+              ),
+              br(),
+              br()
+            ),
+            
+            # Application 3
+            box(
+              title = "OEHHA Lead Leggett+ PBPK Modelling App",
+              status = "info",
+              solidHeader = TRUE,
+              width = 12,
+              p("The Leggett+ PBPK Modelling App allows for user-friendly pharmacokinetic modelling of lead for various exposure scenarios."),
+              p("App under development!"),
+              # tags$a(
+              #   href = "https://oehha.ca.gov/lead-pbpk-app", 
+              #   target = "_blank", 
+              #   tags$span(
+              #     icon("link"),
+              #     style = "font-size: 2rem; font-weight: bold; color: #007bff;",
+              #     " Visit the Lead PBPK Modelling App"
+              #   )
+              # ),
+              tags$span(
+                tags$a(
+                  href = "https://github.com/ScottCoffin/Leggett-_lead_PBPK", 
+                  target = "_blank",
+                  icon("github"),
+                  style = "font-size: 2rem; font-weight: bold; color: #007bff; margin-left: 10px;",
+                  " View GitHub Repository"
+                )
+              ),
+              br(),
+              # tags$a(
+              #   href = "https://oehha.ca.gov/lead-pbpk-app",
+              #   target = "_blank",
+              #   tags$img(src = "lead_pbpk_app_screenshot.png", width = "70%", alt = "Screenshot of OEHHA Lead PBPK Modelling App")
+              # ),
+              # br(),
+              br()
+            )
+          )
+        )
+      )
+      
+      
+    ) #
   )
 )
 
@@ -259,7 +416,15 @@ server <- function(input, output, session) {
     runjs("document.getElementById('run').style.backgroundColor = '#077336';")
   })
   
-  
+  # Download handler for the example CSV
+  output$"example_experiment_data" <- downloadHandler(
+    filename = function() {
+      "example_experiment_data.csv"
+    },
+    content = function(file) {
+      write.csv(initial_table_data, file, row.names = FALSE)
+    }
+  )
   
 #################################################### Data entry and Upload #######################################
 ######## Experiment data table #####  
@@ -327,10 +492,8 @@ server <- function(input, output, session) {
   
   ########################### Parameters Data Table ############
   # initalize input params
-  initial_params_data <- tk_params
-  
   # Reactive value to store params table data
-  params_data <- reactiveVal(initial_params_data)
+  params_data <- reactiveVal(NULL)
   
   # Reactive value to store processed params table
   processed_params <- reactiveVal(NULL)
@@ -426,6 +589,118 @@ server <- function(input, output, session) {
 
     # Update the reactive value with the new data
     params_data(updated_data)
+  })
+  
+  #### Create data object for plotting
+  TK_data <- reactive({
+    
+    full_tk <- readRDS("Additional files/Datasets/general TK/TK_DF.rds") 
+    tk_df <- full_tk %>% 
+      select(chem, cas, species_name, strain, tissue, route, standard_endpoint, standard_value, standard_unit,
+             pubmed_id, authors, year, source, `Preferred value`) %>% 
+      rename(PFAS = chem,
+             CAS = cas,
+             Species = species_name,
+             Strain = strain,
+             Tissue = tissue,
+             Route = route,
+             Endpoint = standard_endpoint,
+             Value = standard_value,
+             Units = standard_unit,
+             PubMedID = pubmed_id,
+             Authors = authors,
+             Year = year,
+             Source = source
+      ) %>% 
+      filter(Endpoint %in% c("CL", "F", "HLe_invivo", "VDss", "kabs")) %>% 
+      mutate(Endpoint = case_when(
+        Endpoint == "CL" ~ "Clearance",
+        Endpoint == "F" ~ "Bioavailable Fraction",
+        Endpoint == "HLe_invivo" ~ "Elimination Half-Life",
+        Endpoint == "VDss" ~ "Volume of Distribution",
+        Endpoint == "kabs" ~ "Absorption Kinetic Constant"
+      ))  %>% 
+      mutate(across(c(PFAS, CAS, Species, Strain, Route, Endpoint, Units, `Preferred value`), as.factor)) %>% 
+      droplevels() 
+    
+    tk_df
+  })
+  
+  #### Full TK DataTable ####
+  output$Full_TK_Datatable <- renderDT(server = F,{
+    tk_df <- TK_data()
+        print("Rendering TK datatable...")
+        
+        
+        # Define the color palette based on your existing scheme
+        color_palette <- c(
+          "#fdb80b",  # Yellow
+          "#0097ab",  # Teal
+          "#0a4531",  # Dark Green
+          "#017a3d",  # Medium Green
+          "#f7a600",  # Gold (analogous to yellow)
+          "#00758f",  # Deep teal
+          "#044d34"   # Very dark green
+        )
+        # Define a corresponding text color palette (white for dark colors)
+        text_palette <- c(
+          "black",    # Yellow
+          "white",    # Teal
+          "white",    # Dark Green
+          "white",    # Medium Green
+          "black",    # Gold
+          "white",    # Deep Teal
+          "white"     # Very Dark Green
+        )
+        
+    dt <- datatable(tk_df,
+              rownames = F,
+              extensions = 'Buttons', #enable buttons extension
+              filter = "top",
+              options = list(pageLength = 25, autoWidth = TRUE,  width = '100%', scrollX = TRUE,
+                             dom = 'Blrtip', 
+                             buttons = list(
+                               # insert buttons with copy and print
+                               # colvis includes the button to select and view only certain columns in the output table
+                               # from https://rstudio.github.io/DT/extensions.html 
+                               I('colvis'), 'copy', 
+                               # code for the first dropdown download button. this will download only the current page only (depends on the number of rows selected in the lengthMenu)
+                               # using modifier = list(page = "current")
+                               # only the columns visible will be downloaded using the columns:":visible" option from:
+                               list(extend = 'collection', buttons = list(list(extend = "csv", filename = "page",exportOptions = list(
+                                 columns = ":visible",modifier = list(page = "current"))),
+                                 list(extend = 'excel', filename = "page", title = NULL, 
+                                      exportOptions = list(columns = ":visible",modifier = list(page = "current")))),
+                                 text = 'Download current page'),
+                               # code for the  second dropdown download button
+                               # this will download the entire dataset using modifier = list(page = "all")
+                               list(extend = 'collection',
+                                    buttons = list(list(extend = "csv", filename = "data",exportOptions = list(
+                                      columns = ":visible",modifier = list(page = "all"))),
+                                      list(extend = 'excel', filename = "data", title = NULL, 
+                                           exportOptions = list(columns = ":visible",modifier = list(page = "all")))),
+                                    text = 'Download all data')),
+                             # add the option to display more rows as a length menu
+                             lengthMenu = list(c(10, 30, 50, -1),
+                                               c('10', '30', '50', 'All'))),class = "display"
+    ) %>%
+      formatStyle(
+        # Target the "Species" column to determine colors
+        columns = "Species",
+        target = "row",
+        # Use a custom JavaScript function to assign row-level colors
+        backgroundColor = styleEqual(
+          unique(tk_df$Species),
+          color_palette          # Use the defined color palette
+        ),
+        color = styleEqual(
+          unique(tk_df$Species),  # Map unique levels to text colors
+          text_palette           # Use the defined text color palette
+      )
+      )
+    
+    dt
+    
   })
   
  
@@ -724,24 +999,28 @@ server <- function(input, output, session) {
     
     print("Running simulation...")
     
-    # Ensure consistent data types before joining
+      # Ensure consistent data types before joining
     exp_data <- experiment_data() %>%
       mutate(
         Species = as.character(Species),
         PFAS = as.character(PFAS),
-        Sex = as.character(Sex)
+        Sex = as.character(Sex),
+        Model_Type = as.character(Model_Type)
       )
+    
+    print(head(params_data()))
     
     params <- params_data() %>%
       mutate(
         Species = as.character(Species),
         PFAS = as.character(PFAS),
-        Sex = as.character(Sex)
+        Sex = as.character(Sex),
+        Model_Type = as.character(Model_Type)
       )
     
     # Join experiment_data with params_data
     experiment_with_params <- exp_data %>%
-      left_join(params, by = c("Species", "Sex", "PFAS"))
+      left_join(params, by = c("Species", "Sex", "PFAS", "Model_Type"))
     
     # Define consistent column structure
     result_cols <- c(
@@ -882,8 +1161,9 @@ server <- function(input, output, session) {
       labs(title = "Plasma Concentration Over Time",
            x = "Time (days)", 
            y = "Concentration (ug/ml)") +
+      scale_color_discrete_c4a_cat("hcl.dark3") +
       xlim(0, max(sim_results$Time, na.rm = TRUE) + 4) +
-      theme_minimal()
+      theme_minimal(base_size = 13)
     
     ggplotly(p)
   })
@@ -929,14 +1209,14 @@ server <- function(input, output, session) {
       geom_point(size = 2, alpha = 0.9) +
       scale_x_log10(limits = expanded_limits) +
       scale_y_log10(limits = expanded_limits) +
-      scale_color_discrete_c4a_cat(name = "") +
+      scale_color_discrete_c4a_cat("hcl.dark3", name = "PFAS-Species-Sex") +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") + # Add 10x and 0.1x deviation lines
       geom_abline(slope = 1, intercept = log10(10), linetype = "dotted", color = "gray70") +
       geom_abline(slope = 1, intercept = log10(0.1), linetype = "dotted", color = "gray70") +
       labs(title = "Modeled vs. Measured Concentration",
            x = "Modeled Concentration (mg/L)",
            y = "Measured Concentration (mg/L)") +
-      theme_minimal() +
+      theme_minimal(base_size = 15) +
       theme(legend.title = element_blank())
     
     ggplotly(p, tooltip = "text")

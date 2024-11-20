@@ -1,0 +1,57 @@
+/* Header logo styles */
+.main-header .logo {
+  font-family: "Georgia", Times, "Times New Roman", serif;
+  font-weight: bold;
+  font-size: 24px;
+  background-color: #0a4531; /* Dark green */
+  color: white;
+}
+
+/* Header navbar styles */
+.main-header .navbar {
+  background-color: #017a3d; /* Medium green */
+}
+
+/* Sidebar styles */
+.main-sidebar {
+  background-color: #0097ab; /* Teal */
+  color: white;
+}
+
+.main-sidebar .sidebar-menu > li > a {
+  color: white;
+  font-weight: bold;
+}
+
+.main-sidebar .sidebar-menu > li > a:hover {
+  background-color: #0a4531; /* Dark green hover */
+  color: #fdb80b; /* Yellow */
+}
+
+/* Content background */
+.content-wrapper {
+  background-color: #f9f9f9; /* Light background for content */
+}
+
+/* Box header styles */
+.box-header {
+  background-color: #017a3d; /* Medium green */
+  color: white;
+  font-weight: bold;
+}
+
+/* Buttons */
+/* Dark green buttons */
+.btn {
+  font-size: 16px; /* Adjust button font size */
+}
+
+.btn:hover {
+  background-color: #017a3d; /* Slightly lighter green on hover */
+}
+
+/* Larger box titles */
+.box-header .box-title {
+  font-size: 20px; /* Increase font size for box titles */
+  font-weight: bold; /* Make the title bold */
+}
