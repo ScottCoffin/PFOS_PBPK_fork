@@ -42,7 +42,7 @@ monkey_params <- readRDS("models/monkey_mcmc.rds")
 monkey_best <- monkey_params$bestpar
 
 # general TK params for non PBPK-models
-tk_params <- readRDS("Additional files/Datasets/general TK/tk_params.rds")
+tk_params <- readRDS("Additional files/Datasets/general/tk_params.rds")
 
 # Define species models and parameters
 species_models <- list(
@@ -606,7 +606,7 @@ server <- function(input, output, session) {
   #### Create data object for plotting
   TK_data <- reactive({
     
-    full_tk <- readRDS("Additional files/Datasets/general TK/TK_DF.rds") 
+    full_tk <- readRDS("Additional files/Datasets/general/tk_df.rds") 
     tk_df <- full_tk %>% 
       select(chem, cas, species_name, strain, tissue, route, standard_endpoint, standard_value, standard_unit,
              pubmed_id, authors, year, source, `Preferred value`) %>% 
@@ -1168,7 +1168,7 @@ server <- function(input, output, session) {
   output$concentrationPlot <- renderPlotly({
     sim_results <- simulation_results()
     
-    p <- ggplot(sim_results, aes(x = Time, y = Concentration, color = interaction(Species, PFAS))) +
+    p <- ggplot(sim_results, aes(x = Time, y = Concentration, color = interaction(Species, PFAS, Sex))) +
       geom_line(size = 1) +
       labs(title = "Plasma Concentration Over Time",
            x = "Time (days)", 
