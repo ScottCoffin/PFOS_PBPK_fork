@@ -46,19 +46,11 @@ tk_params <- readRDS("Additional files/Datasets/general/tk_params.rds")
 
 # Define species models and parameters
 species_models <- list(
-  Rat = list(model = ratpbpk, params = rat_best, default_bw = 0.3),   # 0.3 kg for rat
-  Mouse = list(model = micepbpk, params = mouse_best, default_bw = 0.025), # 0.025 kg for mouse
-  Human = list(model = humanpbpk, params = human_best, default_bw = 82.3),  # 82.3 kg for human
-  Monkey = list(model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
+  Rat = list(PFAS = "PFOS", Sex = "Male", model = ratpbpk, params = rat_best, default_bw = 0.3),   # 0.3 kg for rat
+  Mouse = list(PFAS = "PFOS", Sex = "Male",model = micepbpk, params = mouse_best, default_bw = 0.025), # 0.025 kg for mouse
+  Human = list(PFAS = "PFOS", Sex = "Male",model = humanpbpk, params = human_best, default_bw = 82.3),  # 82.3 kg for human
+  Monkey = list(PFAS = "PFOS", Sex = "Male",model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
 )
-
-# # Define species parameters lookup
-# species_models <- list(
-#   Rat = list(best_params = rat_best, default_bw = 0.3),
-#   Mouse = list(best_params = mouse_best, default_bw = 0.025),
-#   Human = list(best_params = human_best, default_bw = 82.3),
-#   Monkey = list(best_params = monkey_best, default_bw = 3.5)
-# )
 
 
 # Initialize editable table data with unrestricted input fields
@@ -164,7 +156,7 @@ ui <- dashboardPage(
               fluidRow(
                 box(title = "Experimental Conditions", status = "primary", solidHeader = TRUE, width = 12,
                     p("Enter values for each species, PFAS chemical, model type, body weight, dose, interval, duration, and serum collection details."),
-                    p(strong("Use the interactive table below or upload a file to proceed.")),
+                    p(strong("Use the interactive table below or upload a file using the button below.")),
                     rHandsontableOutput("experiment_table"),
                     br(),
                     div(style = "display: flex; justify-content: center; align-items: center; height: 100%;",
@@ -177,25 +169,8 @@ ui <- dashboardPage(
                                 fileInput("upload_experiment_data", "Upload Experimental Conditions Table (.csv or .xlsx)", accept = c(".csv", ".xlsx"))
                             )
                         )
-                    )
-                ),
-                br(),
-                uiOutput("params_check_message"), # Add dynamic message below button
-                br(),
-                useShinyjs(),
-                div(
-                  style = "text-align: center;",
-                  actionButton(
-                    "run", 
-                    label = HTML('<i class="fa fa-rocket"></i> Run Simulation'),
-                    style = "color: #fff; background-color: #077336; border-color: #2e6da4; font-size: 20px; padding: 10px 15px;"
-                  ),
-                  actionButton(
-                    "reset", 
-                    label = HTML('<i class="fa fa-refresh"></i> Reset'),
-                    style = "color: #fff; background-color: #d9534f; border-color: #d43f3a; font-size: 16px; padding: 10px 15px;"
-                  )
-                  
+                    ),
+                    p("Once experimental conditions data are entered above, please proceed by clicking on the", strong("Model Parameters tab"), "on the left side of the app.")
                 )
               )
       ),
@@ -211,9 +186,27 @@ ui <- dashboardPage(
                                 p("Optionally upload TK params data:"),
                                 fileInput("upload_params_data", "Upload Parameters Data (.csv or .xlsx)", accept = c(".csv", ".xlsx")),
                                 br(),
+                                uiOutput("params_check_message"), # Add dynamic message below button
+                                useShinyjs(),
+                                div(
+                                  style = "text-align: center;",
+                                  actionButton(
+                                    "run", 
+                                    label = HTML('<i class="fa fa-rocket"></i> Run Simulation'),
+                                    style = "color: #fff; background-color: #077336; border-color: #2e6da4; font-size: 20px; padding: 10px 15px;"
+                                  ),
+                                  actionButton(
+                                    "reset", 
+                                    label = HTML('<i class="fa fa-refresh"></i> Reset'),
+                                    style = "color: #fff; background-color: #d9534f; border-color: #d43f3a; font-size: 16px; padding: 10px 15px;"
+                                  ),
+                                  br(),
+                                  br(),
+                                  p("To view simulation results, go to the ", strong("Results"), "tab on the left side of the app."), 
+                                ),
                                 br(),
                                 h3("Explore the full toxicokinetic dataset below:"),
-                                box(title = "Full TK Dataset", width = 12,
+                                box(title = "Full TK Dataset", width = 12, collapsible = T, collapsed = T,
                                     DTOutput("Full_TK_Datatable"),
                                     ),
                                 ),
@@ -720,43 +713,67 @@ server <- function(input, output, session) {
   # Reactive values for PBPK model parameters
   reactive_params <- reactiveValues()
   
-  # Observe experiment table and dynamically update parameter tables for each species/sex
   observeEvent(experiment_data(), {
-    shiny::req(experiment_data())  # Ensure experiment_data() is available
-    
-    table_data <- experiment_data()
-    pbpk_data <- subset(table_data, Model_Type == "PBPK")
-    selected_pfas <- unique(pbpk_data$PFAS)
-    
-    # Loop through each unique Species/Sex combination in pbpk_data
-    for (sp in unique(pbpk_data$Species)) {
-      for (sx in unique(pbpk_data$Sex)) {
-        # Filter data for current species and sex
-        species_sex_data <- subset(pbpk_data, Species == sp & Sex == sx)
-        params <- if (!is.null(species_models[[sp]])) species_models[[sp]]$params else NULL
-        
-        # Initialize parameter table if it doesn't already exist
-        if (is.null(reactive_params[[paste0(sp, "_", sx)]])) {
-          reactive_params[[paste0(sp, "_", sx)]] <- data.frame(
-            Parameter = if (!is.null(params)) names(params) else character(0),
-            stringsAsFactors = FALSE
-          )
-        }
-        
-        # Populate columns for each selected PFAS
-        for (pfas in selected_pfas) {
-          is_supported_model <- pfas == "PFOS" && 
-            any(species_sex_data$PFAS == "PFOS" & species_sex_data$Sex == sx)
-          
-          if (is_supported_model && !is.null(params)) {
-            reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- signif(sapply(params, exp), 4)
-          } else {
-            reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- NA
-          }
+  shiny::req(experiment_data())
+  
+  # Filter PBPK rows from experiment_data
+  table_data <- experiment_data()
+  pbpk_data <- subset(table_data, Model_Type == "PBPK")
+  
+  for (sp in unique(pbpk_data$Species)) {
+    for (sx in unique(pbpk_data$Sex)) {
+      # Get species-specific model details
+      model_info <- species_models[[sp]]
+      
+      # Skip processing if model_info is NULL or doesn't match Sex
+      if (is.null(model_info) || model_info$Sex != sx) {
+        next
+      }
+      
+      # Initialize parameter table if it doesn't exist
+      if (is.null(reactive_params[[paste0(sp, "_", sx)]])) {
+        reactive_params[[paste0(sp, "_", sx)]] <- data.frame(
+          Parameter = if (!is.null(model_info$params)) names(model_info$params) else character(0),
+          stringsAsFactors = FALSE
+        )
+      }
+      
+      # Populate columns dynamically for the supported PFAS
+      for (pfas in unique(pbpk_data$PFAS)) {
+        if (pfas == model_info$PFAS) {
+          reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- signif(sapply(model_info$params, exp), 4)
+        } else {
+          reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- NA
         }
       }
     }
+  }
+})
+
+  
+  #just for debugging
+  observeEvent(experiment_data(), {
+    shiny::req(experiment_data())
+    
+    table_data <- experiment_data()
+    pbpk_data <- subset(table_data, Model_Type == "PBPK")
+    
+    for (sp in unique(pbpk_data$Species)) {
+      for (sx in unique(pbpk_data$Sex)) {
+        model_info <- species_models[[sp]]
+        
+        if (is.null(model_info) || model_info$Sex != sx) {
+          message("Skipping unsupported combination: Species =", sp, "Sex =", sx)
+          next
+        }
+        
+        message("Processing Species =", sp, "Sex =", sx, "Supported PFAS =", model_info$PFAS)
+      }
+    }
   })
+  
+  
+  
   
   # Render UI for species/sex parameter tables in a grid layout
   output$species_sex_params_grid <- renderUI({
@@ -768,7 +785,6 @@ server <- function(input, output, session) {
     
     species_sex_combinations <- unique(paste(pbpk_data$Species, pbpk_data$Sex, sep = "_"))
     
-    # Create a list of fluidRows with each row containing two columns
     ui_elements <- list()
     for (i in seq(1, length(species_sex_combinations), by = 2)) {
       row_elements <- list()
@@ -781,16 +797,18 @@ server <- function(input, output, session) {
           species <- sp_sex_split[1]
           sex <- sp_sex_split[2]
           
-          row_elements[[j + 1]] <- column(
-            width = 6,
-            box(
-              title = paste(species, sex, "Model Parameters"), 
-              status = "primary", 
-              solidHeader = TRUE, 
-              width = 12,
-              DTOutput(paste0("params_", species, "_", sex))
+          if (!is.null(reactive_params[[paste0(species, "_", sex)]])) {
+            row_elements[[j + 1]] <- column(
+              width = 6,
+              box(
+                title = paste(species, sex, "Model Parameters"), 
+                status = "primary", 
+                solidHeader = TRUE, 
+                width = 12,
+                DTOutput(paste0("params_", species, "_", sex))
+              )
             )
-          )
+          }
         }
       }
       
@@ -798,14 +816,14 @@ server <- function(input, output, session) {
       ui_elements[[length(ui_elements) + 1]] <- fluidRow(row_elements)
     }
     
-    # Return the complete list of UI elements for grid layout
     ui_elements
   })
   
+  
   # Render and update species/sex-specific parameter tables
   observe({
-    for (sp in unique(initial_table_data$Species)) {
-      for (sx in unique(initial_table_data$Sex)) {
+    for (sp in unique(experiment_data()$Species)) {
+      for (sx in unique(experiment_data()$Sex)) {
         local({
           species <- sp
           sex <- sx
@@ -825,8 +843,8 @@ server <- function(input, output, session) {
   
   # Update reactive parameters when the DataTable is edited
   observe({
-    for (sp in unique(initial_table_data$Species)) {
-      for (sx in unique(initial_table_data$Sex)) {
+    for (sp in unique(experiment_data()$Species)) {
+      for (sx in unique(experiment_data()$Sex)) {
         local({
           species <- sp
           sex <- sx
@@ -840,6 +858,7 @@ server <- function(input, output, session) {
       }
     }
   })
+  
   
   
 ################ error output #####
@@ -947,15 +966,15 @@ server <- function(input, output, session) {
     if (is.null(validation_result)) {
       validation_message(
         tags$p(
-          "All parameters are sufficiently available to run the simulation.",
-          style = "color: green; font-size: 16px; text-align: center;"
+          HTML("All parameters are sufficiently available to run the simulation! <br> Please hit `Run Simulation` button to proceed."),
+          style = "color: green; font-size: 20px; text-align: center;"
         )
       )
     } else {
       validation_message(
         tags$p(
           HTML(validation_result),  # Use HTML to interpret line breaks
-          style = "color: red; font-size: 16px; text-align: center;"
+          style = "color: red; font-size: 20px; text-align: center;"
         )
       )
     }
@@ -989,22 +1008,22 @@ server <- function(input, output, session) {
       # Display the appropriate message
       if (is.null(validation_result)) {
         tags$p(
-          "All parameters are sufficiently available to run the simulation.",
-          style = "color: green; font-size: 16px; text-align: center;"
+          HTML("All parameters are sufficiently available to run the simulation! <br> Please hit `Run Simulation` button below to proceed."),
+          style = "color: green; font-size: 20px; text-align: center;"
         )
       } else {
         tags$p(
           HTML(validation_result),  # Use HTML to interpret line breaks
-          style = "color: red; font-size: 16px; text-align: center;"
+          style = "color: red; font-size: 20px; text-align: center;"
         )
       }
     })
   })
   
 
- #########################################################################################################
+#########################################################################################################
 ############################################### Run Simulation ##########################################
- #####################################################################################################
+#####################################################################################################
   
   simulation_results <- eventReactive(input$run, {
     shiny::req(params_data(), experiment_data())
@@ -1168,16 +1187,35 @@ server <- function(input, output, session) {
   output$concentrationPlot <- renderPlotly({
     sim_results <- simulation_results()
     
-    p <- ggplot(sim_results, aes(x = Time, y = Concentration, color = interaction(Species, PFAS, Sex))) +
+    # Create a new column for custom legend labels
+    sim_results <- sim_results %>%
+      mutate(Legend_Label = paste(Species, PFAS, Sex, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
+    
+    # Plot with the custom legend labels
+    p <- ggplot(sim_results, aes(x = Time, y = Concentration, color = Legend_Label,
+                                 group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
+                                 text = paste("Chemical:", PFAS, "<br>",
+                                              "Species:", Species, "<br>",
+                                              "Sex:", Sex, "<br>",
+                                              "Model:", Model_Type, "<br>",
+                                              "Dose:", Dose_mg_per_kg, "mg/kg-d", "<br>",
+                                              "Exposure Duration:", Exposure_Duration_Days, "days", "<br>",
+                                              "Dosing Interval:", Interval_Hours, "hrs", "<br>",
+                                              "Time:", signif(Time, 4), "hr", "<br>",
+                                              "Modeled Serum Concentration:", signif(Concentration,3), "mg/L", "<br>")
+                                 )) +
       geom_line(size = 1) +
       labs(title = "Plasma Concentration Over Time",
            x = "Time (days)", 
-           y = "Concentration (ug/ml)") +
+           y = "Concentration (ug/ml)",
+           color = "") +
       scale_color_discrete_c4a_cat("hcl.dark3") +
       xlim(0, max(sim_results$Time, na.rm = TRUE) + 4) +
-      theme_minimal(base_size = 13)
+      theme_minimal(base_size = 13) + 
+      theme(legend.title = element_blank())
     
-    ggplotly(p)
+    # Convert to plotly
+    ggplotly(p, tooltip = "text")
   })
   
   ############################ Scatterplot of measured vs. modeled #############
@@ -1190,7 +1228,9 @@ server <- function(input, output, session) {
       mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
         subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
       })) %>%
-      filter(!is.na(modeled_concentration))
+      filter(!is.na(modeled_concentration)) %>% 
+      # custom legend for plot
+      mutate(Legend_Label = paste(Species, PFAS, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
     
     # Calculate dynamic limits based on the data range
     data_range <- range(
@@ -1207,25 +1247,28 @@ server <- function(input, output, session) {
     #make scatterplot
     p <- ggplot(measured_conc, aes(x = modeled_concentration, 
                                    y = Serum_Concentration_mg_L,
-                                   color = paste(PFAS, Species, #route,
-                                                 sep = " - "),
+                                   color = Legend_Label,
                                    shape = Sex,
+                                   group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
                                    text = paste("Chemical:", PFAS, "<br>",
                                                 "Species:", Species, "<br>",
                                                 "Sex:", Sex, "<br>",
-                                                "Model:", Model_Type, "<br>",
                                                 "Dose:", Dose_mg_per_kg, "mg/kg-d", "<br>",
                                                 "Exposure Duration:", Exposure_Duration_Days, "days", "<br>",
+                                                "Dosing Interval:", Interval_Hours, "hrs", "<br>",
                                                 "Measured Serum Concentration:", Serum_Concentration_mg_L, "mg/L", "<br>",
-                                                "Modeled Serum Concentration:", modeled_concentration, "mg/L", "<br>"))) +
+                                                "Model:", Model_Type, "<br>",
+                                                "Modeled Serum Concentration:", signif(modeled_concentration,3), "mg/L", "<br>"))) +
       geom_point(size = 2, alpha = 0.9) +
       scale_x_log10(limits = expanded_limits) +
       scale_y_log10(limits = expanded_limits) +
-      scale_color_discrete_c4a_cat("hcl.dark3", name = "PFAS-Species-Sex") +
+      scale_color_discrete_c4a_cat("hcl.dark3", name = "") +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") + # Add 10x and 0.1x deviation lines
       geom_abline(slope = 1, intercept = log10(10), linetype = "dotted", color = "gray70") +
       geom_abline(slope = 1, intercept = log10(0.1), linetype = "dotted", color = "gray70") +
       labs(title = "Modeled vs. Measured Concentration",
+           color = "",
+           shape = "",
            x = "Modeled Concentration (mg/L)",
            y = "Measured Concentration (mg/L)") +
       theme_minimal(base_size = 15) +
@@ -1284,14 +1327,31 @@ server <- function(input, output, session) {
     sim_results <- simulation_results()
     exp_data <- experiment_data() %>% filter(!is.na(Time_Serum_Collected_hr))
     
+    # Pre-calculate time in days for joining
+    exp_data <- exp_data %>%
+      mutate(Time_in_days = Time_Serum_Collected_hr / 24)
+    
+    # Join with sim_results
     data <- exp_data %>%
-      mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
-        subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
-      })) %>%
-      select(PFAS, Species, Dose_mg_per_kg, Time_Serum_Collected_hr, Serum_Concentration_mg_L, modeled_concentration, Model_Type) #%>% 
-      # left_join(summary_stats(),
-      #           by = c("PFAS", "Species", "Sex", "Model_Type", "Dose_mg_per_kg", #"Interval_Hours",
-      #                  "Exposure_Duration_Days"))
+      left_join(sim_results, by = c("Time_in_days" = "Time", "Species" = "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg", "Exposure_Duration_Days", "Interval_Hours")) %>%
+      rename("Predicted Concentration (mg/L)" = Concentration,
+             "Model" = Model_Type,
+             "Dose (mg/kg)" = Dose_mg_per_kg,
+             "Dosing Interval" = Interval_Hours,
+             "Exposure (Days)" = Exposure_Duration_Days,
+             "Hr Serum Collected" = Time_Serum_Collected_hr,
+             "Measured Concentration (mg/L)" = Serum_Concentration_mg_L
+             ) %>% 
+      select(-Time_in_days) %>% 
+      mutate(across(c(PFAS, Species, Sex, Model), as.factor))
+
+    
+    # legacy approach    
+    # data <- exp_data %>%
+    #   mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
+    #     subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
+    #   })) %>%
+    #   select(PFAS, Species, Sex, Dose_mg_per_kg, Model_Type, Time_Serum_Collected_hr, Serum_Concentration_mg_L, modeled_concentration)
     
       dt <- datatable(data,
         rownames = F,
@@ -1330,7 +1390,7 @@ server <- function(input, output, session) {
           c("PBPK", "single-compartment", "two-compartment"), 
           c("#3A9AB2", "#6FB2C1", "#91BAB6")
         ),
-        columns = "Model_Type"  # Specifies to base coloring on the data_available column
+        columns = "Model"  # Specifies to base coloring on the data_available column
       ) 
     
     # Identify numeric columns
@@ -1359,7 +1419,7 @@ server <- function(input, output, session) {
       #get experimental input data
       left_join(experiment_data(),
                 by = c("PFAS", "Species", "Sex", "Model_Type", "Dose_mg_per_kg", "Interval_Hours", "Exposure_Duration_Days")) %>% 
-      group_by(Species, PFAS, Sex, Model_Type, Dose_mg_per_kg, Exposure_Duration_Days) %>%
+      group_by(Species, PFAS, Sex, Model_Type, Dose_mg_per_kg, Interval_Hours, Exposure_Duration_Days) %>%
       summarize(
         C_max = max(Concentration),
         AUC = {
@@ -1378,7 +1438,13 @@ server <- function(input, output, session) {
     print("Rendering summary table...")
 
     # Get the summary statistics
-    summary <- summary_stats()
+    summary <- summary_stats() %>% 
+      rename("Model" = Model_Type,
+             "Dose (mg/kg)" = Dose_mg_per_kg,
+             "Exposure (Days)" = Exposure_Duration_Days,
+             "Maximum Serum Concentration (mg/L)" = C_max,
+             "Area Under Curve Serum Concentration (mg/L)" = AUC,
+             "Time-Weighted Average Serum Concentraiton (mg/L)" = C_TWA)
 
     # Manually check if the summary statistics exist and are valid
     if (is.null(summary) || nrow(summary) == 0) {
@@ -1422,9 +1488,10 @@ server <- function(input, output, session) {
           c("PBPK", "single-compartment", "two-compartment"), 
           c("#3A9AB2", "#6FB2C1", "#91BAB6")
         ),
-        columns = "Model_Type"  # Specifies to base coloring on the data_available column
+        columns = "Model"  # Specifies to base coloring on the data_available column
       ) %>%
-      formatSignif(columns = c("C_max", "AUC", "C_TWA"), digits = 4)
+      formatSignif(columns = c("Maximum Serum Concentration (mg/L)", "Area Under Curve Serum Concentration (mg/L)", "Time-Weighted Average Serum Concentraiton (mg/L)"),
+                   digits = 4)
   })
 
 #### Summary stats heatmap ####
@@ -1432,10 +1499,13 @@ server <- function(input, output, session) {
     
     params_heat <- summary_stats() %>%
       pivot_longer(
-        cols = c(C_max, C_TWA), # Replace these with the actual column names in `summary_table`
+        cols = c("C_max", "C_TWA"),
         names_to = "Metric",
         values_to = "Value"
       ) %>%
+      mutate(Metric = case_when(
+        Metric == "C_max" ~ "Maximum Serum Concentration (mg/L)",
+        Metric == "C_TWA" ~ "Time-Weighted Average Serum Concentration (mg/L)")) %>% 
       group_by(Metric) %>%
       mutate(
         normalized_value = (Value - min(Value, na.rm = TRUE)) /
@@ -1446,14 +1516,17 @@ server <- function(input, output, session) {
       ggplot(aes(
         x = Metric,
         y = paste(PFAS, Sex, Species, Model_Type, sep = " - "), 
+        group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
         fill = normalized_value + 0.001,
         text = paste0(
           "Chemical: ", PFAS, "<br>",
           "Species: ", Species, "<br>",
-          "Model Type: ", Model_Type, "<br>",
           "Sex: ", Sex, "<br>",
+          "Exposure Duration: ", Exposure_Duration_Days, " days", "<br>",
+          "Dose: ", Dose_mg_per_kg, " mg/kg", "<br>",
+          "Model Type: ", Model_Type, "<br>",
           "Computed Metric: ", Metric, "<br>",
-          "Value: ", Value, "<br>"
+          "Value: ", signif(Value,2), " mg/L"
         )
       )) +
       geom_tile(color = "white") +
@@ -1473,16 +1546,17 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 15) +
       theme(
         axis.text.y = element_text(size = 14),  # Adjust the y-axis text size
-        axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+        axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
         plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5),
         axis.title.y = element_blank(),
         axis.title.x = element_blank(),
         legend.position = "none"
-      )
+      ) +
+      scale_x_discrete(labels = function(x) str_wrap(x, width = 15))  # Wrap x-axis text
     
     
-    params_heat
+    ggplotly(params_heat, tooltip = "text")
   })
   
   
