@@ -438,7 +438,7 @@ server <- function(input, output, session) {
   
   # Upload and update experiment_data
   observeEvent(input$upload_experiment_data, {
-    req(input$upload_experiment_data)
+ 
     file <- input$upload_experiment_data
     ext <- tools::file_ext(file$name)
     if (ext == "csv") {
@@ -536,7 +536,7 @@ server <- function(input, output, session) {
   
   # Upload and update params_data (model parameters for species/sex combinations)
   observeEvent(input$upload_params_data, {
-    shiny::req(input$upload_params_data)
+  
     file <- input$upload_params_data
     ext <- tools::file_ext(file$name)
     if (ext == "csv") {
