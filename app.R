@@ -80,33 +80,86 @@ original_levels <- lapply(initial_table_data, levels)
 experiment_data <- reactiveVal(initial_table_data)
 
 ############# PK Model Functions ############
+# Function for single-compartment model
 simplified_conc <- function(D_per_dose, Vd, ke, tau, n, t, exposure_duration_hr) {
-  if (t <= exposure_duration_hr) {
-    doses_given <- floor(t / tau)
-    C <- (D_per_dose / Vd) * ((1 - exp(-doses_given * ke * tau)) / (1 - exp(-ke * tau))) * exp(-ke * (t %% tau))
-  } else {
-    time_since_last_dose <- t - exposure_duration_hr
-    C <- (D_per_dose / Vd) * exp(-ke * time_since_last_dose)
+  # Calculate concentration at each time point
+  concentration <- numeric(length(t))
+  for (i in 1:n) {
+    dose_time <- (i - 1) * tau
+    concentration <- concentration + (D_per_dose / Vd) * exp(-ke * (t - dose_time)) * (t >= dose_time)
   }
-  return(C)
+
+  return(concentration)
 }
 
+# Function for two-compartment model
 full_conc <- function(D_per_dose, Vd, ke, ka, tau, n, t, exposure_duration_hr) {
-  if (t <= exposure_duration_hr) {
-    doses_given <- floor(t / tau)
-    C <- (D_per_dose * ka) / (Vd * (ka - ke)) * (
-      (exp(-ke * (t %% tau)) / (1 - exp(-ke * tau))) - 
-        (exp(-ka * (t %% tau)) / (1 - exp(-ka * tau)))
-    )
-  } else {
-    time_since_last_dose <- t - exposure_duration_hr
-    C <- (D_per_dose * ka) / (Vd * (ka - ke)) * (
-      (exp(-ke * time_since_last_dose)) - 
-        (exp(-ka * time_since_last_dose))
-    )
+  # Calculate concentration at each time point
+  concentration <- numeric(length(t))
+  for (i in 1:n) {
+    dose_time <- (i - 1) * tau
+    # Absorption phase
+    concentration <- concentration + (D_per_dose / Vd) * (ka / (ka - ke)) *
+      (exp(-ke * (t - dose_time)) - exp(-ka * (t - dose_time))) * (t >= dose_time)
   }
-  return(C)
+
+  return(concentration)
 }
+
+
+
+##### ORIGINAL FORMULA ######
+# simplified_conc <- function(D_per_dose, Vd, ke, tau, n, t, exposure_duration_hr) {
+#   if (t == 0) {
+#     # Explicitly set concentration to 0 at the start of the simulation
+#     C <- 0
+#   } else if (t <= exposure_duration_hr) {
+#     # Calculate the cumulative concentration over time (transient phase)
+#     doses_given <- floor(t / tau)
+#     C <- 0  # Initialize concentration
+#     for (i in 0:(doses_given - 1)) {
+#       dose_time <- i * tau
+#       C <- C + (D_per_dose / Vd) * exp(-ke * (t - dose_time))
+#     }
+#   } else {
+#     # After the exposure duration, calculate residual concentration from all doses
+#     doses_given <- floor(exposure_duration_hr / tau)
+#     C <- 0  # Initialize concentration
+#     for (i in 0:(doses_given - 1)) {
+#       dose_time <- i * tau
+#       C <- C + (D_per_dose / Vd) * exp(-ke * (t - dose_time))
+#     }
+#   }
+#   return(C)
+# }
+# 
+# full_conc <- function(D_per_dose, Vd, ke, ka, tau, n, t, exposure_duration_hr) {
+#   if (t == 0) {
+#     # Explicitly set concentration to 0 at the start of the simulation
+#     C <- 0
+#   } else if (t <= exposure_duration_hr) {
+#     # Calculate the cumulative concentration over time (transient phase)
+#     doses_given <- floor(t / tau)
+#     C <- 0  # Initialize concentration
+#     for (i in 0:(doses_given - 1)) {
+#       dose_time <- i * tau
+#       C <- C + (D_per_dose * ka) / (Vd * (ka - ke)) * (
+#         exp(-ke * (t - dose_time)) - exp(-ka * (t - dose_time))
+#       )
+#     }
+#   } else {
+#     # After the exposure duration, calculate residual concentration from all doses
+#     doses_given <- floor(exposure_duration_hr / tau)
+#     C <- 0  # Initialize concentration
+#     for (i in 0:(doses_given - 1)) {
+#       dose_time <- i * tau
+#       C <- C + (D_per_dose * ka) / (Vd * (ka - ke)) * (
+#         exp(-ke * (t - dose_time)) - exp(-ka * (t - dose_time))
+#       )
+#     }
+#   }
+#   return(C)
+# }
 
 # Function to calculate AUC using the trapezoidal rule
 calculate_auc <- function(time, concentration) {
@@ -1097,7 +1150,7 @@ server <- function(input, output, session) {
         cat("Interval:", interval, "hours\n")
         
         ex <- ev(ID = 1, amt = dose_mg, ii = interval_between_doses, addl = total_doses - 1, cmt = "AST")
-        tgrid <- tgrid(0, exposure_duration_hrs + 96, 1)
+        tgrid <- tgrid(0, exposure_duration_hrs + 96, by = 1)
       
         
         output <- tryCatch({
@@ -1176,10 +1229,6 @@ server <- function(input, output, session) {
   
   
   
-  
-  
-  
-  
 
   ###################################################### Results ###########################################  
   ############################### Concentration-time Plot ##############
@@ -1201,7 +1250,7 @@ server <- function(input, output, session) {
                                               "Dose:", Dose_mg_per_kg, "mg/kg-d", "<br>",
                                               "Exposure Duration:", Exposure_Duration_Days, "days", "<br>",
                                               "Dosing Interval:", Interval_Hours, "hrs", "<br>",
-                                              "Time:", signif(Time, 4), "hr", "<br>",
+                                              "Time:", signif(Time, 4), "Days", "<br>",
                                               "Modeled Serum Concentration:", signif(Concentration,3), "mg/L", "<br>")
                                  )) +
       geom_line(size = 1) +
@@ -1224,13 +1273,34 @@ server <- function(input, output, session) {
     sim_results <- simulation_results()
     exp_data <- experiment_data() %>% filter(!is.na(Time_Serum_Collected_hr))
     
+    # Pre-calculate time in days for joining
+    exp_data <- exp_data %>%
+      mutate(Time_in_days = Time_Serum_Collected_hr / 24)
+    
+    # Join with sim_results
     measured_conc <- exp_data %>%
-      mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
-        subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
-      })) %>%
-      filter(!is.na(modeled_concentration)) %>% 
-      # custom legend for plot
+      left_join(sim_results, by = c("Time_in_days" = "Time", "Species" = "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg", "Exposure_Duration_Days", "Interval_Hours")) %>%
+      # rename("Predicted Concentration (mg/L)" = Concentration,
+      #        "Model" = Model_Type,
+      #        "Dose (mg/kg)" = Dose_mg_per_kg,
+      #        "Dosing Interval" = Interval_Hours,
+      #        "Exposure (Days)" = Exposure_Duration_Days,
+      #        "Hr Serum Collected" = Time_Serum_Collected_hr,
+      #        "Measured Concentration (mg/L)" = Serum_Concentration_mg_L
+      # ) %>% 
+   #   select(-Time_in_days) %>% 
+    #  mutate(across(c(PFAS, Species, Sex, Model), as.factor)) %>% 
+      rename(modeled_concentration = Concentration) %>% 
       mutate(Legend_Label = paste(Species, PFAS, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
+    
+    #legacy approach
+    # measured_conc <- exp_data %>%
+    #   mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
+    #     subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
+    #   })) %>%
+    #   filter(!is.na(modeled_concentration)) %>% 
+    #   # custom legend for plot
+    #   mutate(Legend_Label = paste(Species, PFAS, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
     
     # Calculate dynamic limits based on the data range
     data_range <- range(
@@ -1245,8 +1315,8 @@ server <- function(input, output, session) {
     )
     
     #make scatterplot
-    p <- ggplot(measured_conc, aes(x = modeled_concentration, 
-                                   y = Serum_Concentration_mg_L,
+    p <- ggplot(measured_conc, aes(y = modeled_concentration, 
+                                   x = Serum_Concentration_mg_L,
                                    color = Legend_Label,
                                    shape = Sex,
                                    group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
@@ -1344,15 +1414,8 @@ server <- function(input, output, session) {
              ) %>% 
       select(-Time_in_days) %>% 
       mutate(across(c(PFAS, Species, Sex, Model), as.factor))
-
     
-    # legacy approach    
-    # data <- exp_data %>%
-    #   mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
-    #     subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
-    #   })) %>%
-    #   select(PFAS, Species, Sex, Dose_mg_per_kg, Model_Type, Time_Serum_Collected_hr, Serum_Concentration_mg_L, modeled_concentration)
-    
+    #build datatable
       dt <- datatable(data,
         rownames = F,
         extensions = 'Buttons', #enable buttons extension
