@@ -509,6 +509,8 @@ server <- function(input, output, session) {
                "Model_Type"
                #, "Body_Weight_kg"
                ) %in% colnames(new_data))) {
+      print("Uploaded data column names:")
+      print(colnames(new_data))
       showNotification("Invalid data format. Missing required columns.", type = "error")
       return(NULL)
     }
@@ -773,6 +775,9 @@ server <- function(input, output, session) {
   table_data <- experiment_data()
   pbpk_data <- subset(table_data, Model_Type == "PBPK")
   
+  print("Processing PBPK data...")
+  print(head(pbpk_data))  # Debugging: Inspect PBPK data
+  
   for (sp in unique(pbpk_data$Species)) {
     for (sx in unique(pbpk_data$Sex)) {
       # Get species-specific model details
@@ -795,6 +800,8 @@ server <- function(input, output, session) {
       for (pfas in unique(pbpk_data$PFAS)) {
         if (pfas == model_info$PFAS) {
           reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- signif(sapply(model_info$params, exp), 4)
+          print("Reactive parameters:")
+          print(reactive_params)
         } else {
           reactive_params[[paste0(sp, "_", sx)]][[pfas]] <- NA
         }
@@ -815,7 +822,17 @@ server <- function(input, output, session) {
       for (sx in unique(pbpk_data$Sex)) {
         model_info <- species_models[[sp]]
         
-        if (is.null(model_info) || model_info$Sex != sx) {
+        if (is.null(model_info)) {
+          message("Model info is NULL for Species =", sp)
+          next
+        }
+        
+        if (is.na(model_info$Sex)) {
+          message("Sex is NA for Species =", sp, "Sex =", sx)
+          next
+        }
+        
+        if (model_info$Sex != sx) {
           message("Skipping unsupported combination: Species =", sp, "Sex =", sx)
           next
         }
@@ -823,13 +840,18 @@ server <- function(input, output, session) {
         message("Processing Species =", sp, "Sex =", sx, "Supported PFAS =", model_info$PFAS)
       }
     }
+    
+    if (is.null(species_models) || length(species_models) == 0) {
+      showNotification("Species models data is missing or invalid.", type = "error")
+      return(NULL)
+    }
+    message("Species processing complete")
   })
-  
-  
   
   
   # Render UI for species/sex parameter tables in a grid layout
   output$species_sex_params_grid <- renderUI({
+    message("rendering species_sex_params_grid")
     shiny::req(experiment_data())
     table_data <- experiment_data()
     pbpk_data <- subset(table_data, Model_Type == "PBPK")

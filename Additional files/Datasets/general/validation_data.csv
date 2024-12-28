@@ -1,0 +1,35 @@
+﻿Study,strain,route,PFAS,Species,Sex,Model_Type,Dose_mg_per_kg,Interval_Hours,Exposure_Duration_Days,Time_Serum_Collected_hr,Serum_Concentration_mg_L
+Das et al. 2008 pregnant F mouse,CD1,Intragastric,PFBA,Mouse,Female,two-compartment,35,24,28,432,3.78
+Das et al. 2008 pregnant F mouse,CD1,Intragastric,PFBA,Mouse,Female,two-compartment,175,24,28,432,4.44
+Das et al. 2008 pregnant F mouse,CD1,Intragastric,PFBA,Mouse,Female,two-compartment,350,24,28,432,2.49
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) male Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Male,single-compartment,5.3,24,28,696,24.65
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) male Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Male,single-compartment,25.4,24,28,696,38.04
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) male Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Male,single-compartment,130.2,24,28,696,82.2
+Foreman et al 2009,Sv/129,Intragastric,PFBA,Mouse,Male,single-compartment,35.01,24,28,696,86
+Foreman et al 2009,Sv/129,Intragastric,PFBA,Mouse,Male,single-compartment,175,24,28,696,109
+Foreman et al 2009,Sv/129,Intragastric,PFBA,Mouse,Male,single-compartment,350,24,28,696,117
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) female Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Female,two-compartment,5.301,24,28,696,0.34
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) female Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Female,two-compartment,25.4,24,28,696,1.72
+"Butenhoff et al 2012a (published), van Otterdijk 2007a (3M study - cannot find online; in CDs?) female Sprague Dawley rats (Crl:CD,
+
+outbred, SPF quality)",Sprague-Dawley,Intragastric,PFBA,Rat,Female,two-compartment,130.2,24,28,696,10.3
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Female,single-compartment,0.156,24,28,696,11.21
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Female,single-compartment,0.312,24,28,696,25.7
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Female,single-compartment,0.625,24,28,696,50.29
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Female,single-compartment,1.25,24,28,696,117.2
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Female,single-compartment,2.5,24,28,696,246.9
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Male,single-compartment,0.156,24,28,696,8.505
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Male,single-compartment,0.312,24,28,696,23.03
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Male,single-compartment,0.625,24,28,696,42.72
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Male,single-compartment,1.25,24,28,696,101.6
+NTP 2019 28 day study,Sprague-Dawley,Intragastric,PFDA,Rat,Male,single-compartment,2.5,24,28,696,259.4
