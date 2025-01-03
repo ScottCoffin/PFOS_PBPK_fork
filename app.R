@@ -88,7 +88,6 @@ simplified_conc <- function(D_per_dose, Vd, ke, tau, n, t, exposure_duration_hr)
     dose_time <- (i - 1) * tau
     concentration <- concentration + (D_per_dose / Vd) * exp(-ke * (t - dose_time)) * (t >= dose_time)
   }
-
   return(concentration)
 }
 
@@ -96,13 +95,26 @@ simplified_conc <- function(D_per_dose, Vd, ke, tau, n, t, exposure_duration_hr)
 full_conc <- function(D_per_dose, Vd, ke, ka, tau, n, t, exposure_duration_hr) {
   # Calculate concentration at each time point
   concentration <- numeric(length(t))
-  for (i in 1:n) {
-    dose_time <- (i - 1) * tau
-    # Absorption phase
-    concentration <- concentration + (D_per_dose / Vd) * (ka / (ka - ke)) *
-      (exp(-ke * (t - dose_time)) - exp(-ka * (t - dose_time))) * (t >= dose_time)
+  # Calculate concentrations for each dose administered
+  for (i in 1:n) {  # Loop over each dose (from 1 to n)
+    dose_time <- (i - 1) * tau  # Calculate the time at which the current dose is administered
+    for (j in 1:length(t)) {  # Loop over each time point in the defined sequence
+      if (t[j] >= dose_time) {  # Check if the current time point is greater than or equal to the dose time
+        if (ka != ke) {  # Ensure that the absorption rate constant is not equal to the elimination rate constant
+          exp_ke <- exp(-ke * (t[j] - dose_time))  # Calculate the exponential term for elimination
+          exp_ka <- exp(-ka * (t[j] - dose_time))  # Calculate the exponential term for absorption
+          if (is.finite(exp_ke) && is.finite(exp_ka)) {  # Check if both exponential calculations are finite
+            # Update the concentration at the current time point using the pharmacokinetic formula
+            concentration[j] <- concentration[j] + (D_per_dose / Vd) * (ka / (ka - ke)) *
+              (exp_ke - exp_ka)  # Add the contribution of the current dose to the concentration
+          }
+        } else {
+        # If ka equals ke, handle it here
+        concentration[j] <- concentration[j] + (D_per_dose / Vd) * ka * (t[j] - dose_time) * exp(-ke * (t[j] - dose_time))
+      }
+    }
+    }
   }
-
   return(concentration)
 }
 
@@ -235,6 +247,7 @@ ui <- dashboardPage(
                        tabPanel(title = "Simple TK Models",
                                 p("Toxicokinetic parameter data for PFAS are from a curated large variety of data sources. Whenever possible, TK parameters from authoritative sources (e.g., ATSDR, USEPA) are used when multiple are available for a given chemical-species-sex combination. The full, compiled TK dataset may be viewed in the interactive datatable below."),
                                 rHandsontableOutput("params_table"),  # Dynamically generate UI for each species' parameters
+                                p("Please note that `Absorption Coefficient` refers to the absorption phase kinetic coefficient (commonly referred to as `Ka`) - and is not the same as the absorption fraction (commonly referred to as `F`."),
                                 br(),
                                 p("Optionally upload TK params data:"),
                                 fileInput("upload_params_data", "Upload Parameters Data (.csv or .xlsx)", accept = c(".csv", ".xlsx")),
@@ -516,6 +529,7 @@ server <- function(input, output, session) {
     }
     experiment_data(new_data)
     showNotification("Experiment data successfully updated.", type = "message")
+    print("Experiment data successfully updated.")
   })
   
   # Render editable datatable
@@ -530,22 +544,39 @@ server <- function(input, output, session) {
     # Get the updated data from the input
     updated_data <- hot_to_r(input$experiment_table)
     
+    print("Updating experiment table based on new input...")
+    
     # Reapply original data types and levels
     for (col in names(updated_data)) {
-      if (original_types[col] == "factor") {
-        # Convert back to factor with original levels
-        updated_data[[col]] <- factor(updated_data[[col]], levels = original_levels[[col]], ordered = is.ordered(initial_table_data[[col]]))
-      } else if (original_types[col] == "integer") {
-        # Convert back to integer
-        updated_data[[col]] <- as.integer(updated_data[[col]])
-      } else if (original_types[col] == "numeric") {
-        # Convert back to numeric
-        updated_data[[col]] <- as.numeric(updated_data[[col]])
-      } else if (original_types[col] == "character") {
-        # Convert back to character
-        updated_data[[col]] <- as.character(updated_data[[col]])
+      # Check if the original type is not NA
+      if (!is.na(original_types[col])) {
+        # Use tryCatch to handle potential errors
+        tryCatch({
+          if (original_types[col] == "factor") {
+            # Convert back to factor with original levels
+            updated_data[[col]] <- factor(updated_data[[col]], levels = original_levels[[col]], ordered = is.ordered(initial_table_data[[col]]))
+          } else if (original_types[col] == "integer") {
+            # Convert back to integer
+            updated_data[[col]] <- as.integer(updated_data[[col]])
+          } else if (original_types[col] == "numeric") {
+            # Convert back to numeric
+            updated_data[[col]] <- as.numeric(updated_data[[col]])
+          } else if (original_types[col] == "character") {
+            # Convert back to character
+            updated_data[[col]] <- as.character(updated_data[[col]])
+          }
+        }, error = function(e) {
+          # Handle the error gracefully
+          print(paste("Error converting column", col, ":", e$message))
+          # Optionally, you can set the column to NA or keep it unchanged
+          updated_data[[col]] <- NA  # or leave it unchanged
+        })
+      } else {
+        # Debugging output for missing type
+        print(paste("Warning: Original type for column", col, "is NA. Skipping conversion."))
       }
     }
+    
     # Update the reactive value with the new data
     experiment_data(updated_data)
   })
@@ -560,16 +591,16 @@ server <- function(input, output, session) {
   
   # Observe changes in experiment_data() and update processed_params
   observeEvent(experiment_data(), {
-    
+
     shiny::req(experiment_data())
     # Filter experimental data to non-PBPK rows
     exp_data <- experiment_data() %>%
       filter(Model_Type != "PBPK") %>%  # Exclude PBPK rows for this table
       distinct(PFAS, Species, Sex,
-               #Route, 
+               #Route,
                Model_Type) %>%
       mutate(selected = "selected")
-    
+
     # Perform the join with tk_params
     params_processed <- exp_data %>%
       left_join(tk_params, by = c("PFAS", "Species", "Sex"
@@ -578,20 +609,33 @@ server <- function(input, output, session) {
                 ) %>%
       filter(selected == "selected") %>%  # Keep only selected rows
       select(-selected) %>%  # Drop the helper column
-      distinct() %>% 
+      distinct() %>%
+      #calculate half-life from Clearance and Volume of Distribution if value is missing
+      mutate(
+        Half_Life_hr = case_when(
+        is.na(Half_Life_hr) & !is.na(Clearance_L_per_kg_d) & !is.na(Volume_of_Distribution_L_per_kg) ~
+          (log(2) * Volume_of_Distribution_L_per_kg) / Clearance_L_per_kg_d, #Ke = Vd / Cl
+        T ~ Half_Life_hr
+        ),
+        Volume_of_Distribution_L_per_kg = case_when(
+          is.na(Volume_of_Distribution_L_per_kg) & !is.na(Clearance_L_per_kg_d) & !is.na(Half_Life_hr) ~
+            Clearance_L_per_kg_d / (log(2) / Half_Life_hr), #Vd  = Ke / Cl
+          T ~ Volume_of_Distribution_L_per_kg
+          )
+      ) %>% 
       arrange(desc(PFAS), Species, Sex)  # Arrange for consistent display
-    
+
     # Debugging: Inspect the processed data
     print("Processed params table:")
     print(params_processed)
-    
+
     # Update reactive value
     processed_params(params_processed)
   })
-  
+
   # Upload and update params_data (model parameters for species/sex combinations)
   observeEvent(input$upload_params_data, {
-  
+
     file <- input$upload_params_data
     ext <- tools::file_ext(file$name)
     if (ext == "csv") {
@@ -619,7 +663,7 @@ server <- function(input, output, session) {
   # Render the RHandsontable using processed_params
   output$params_table <- renderRHandsontable({
     shiny::req(processed_params())  # Ensure processed_params is available
-    
+
     # JavaScript renderer function to format numbers to 4 significant digits
     custom_renderer <- "
     function (instance, td, row, col, prop, value, cellProperties) {
@@ -629,7 +673,7 @@ server <- function(input, output, session) {
       }
     }
   "
-    
+
     # Create rhandsontable
     rhandsontable(processed_params()) %>%
       hot_cols(strict = TRUE, allowInvalid = FALSE) %>%
@@ -637,10 +681,10 @@ server <- function(input, output, session) {
       hot_col("Species", readOnly = TRUE) %>%
       hot_col("Sex", readOnly = TRUE) %>%
      # hot_col("Route", readOnly = TRUE) %>%
-      hot_col("Model_Type", readOnly = TRUE) %>% 
+      hot_col("Model_Type", readOnly = TRUE) %>%
       hot_cols(renderer = custom_renderer)  # Apply the custom renderer to all columns
   })
-  
+
  
   # Observe changes in the rhandsontable and update reactive value
   observeEvent(input$params_table, {
@@ -650,17 +694,18 @@ server <- function(input, output, session) {
     # Update the reactive value with the new data
     params_data(updated_data)
   })
-  
+
   #### Create data object for plotting
   TK_data <- reactive({
     
     full_tk <- readRDS("Additional files/Datasets/general/tk_df.rds") 
     tk_df <- full_tk %>% 
-      select(chem, cas, species_name, strain, tissue, route, standard_endpoint, standard_value, standard_unit,
+      select(chem, cas, species_name, sex, strain, tissue, route, standard_endpoint, standard_value, standard_unit,
              pubmed_id, authors, year, source, `Preferred value`) %>% 
       rename(PFAS = chem,
              CAS = cas,
              Species = species_name,
+             Sex = sex,
              Strain = strain,
              Tissue = tissue,
              Route = route,
@@ -770,32 +815,34 @@ server <- function(input, output, session) {
   
   observeEvent(experiment_data(), {
   shiny::req(experiment_data())
-  
+
   # Filter PBPK rows from experiment_data
   table_data <- experiment_data()
   pbpk_data <- subset(table_data, Model_Type == "PBPK")
-  
+
   print("Processing PBPK data...")
   print(head(pbpk_data))  # Debugging: Inspect PBPK data
-  
+
   for (sp in unique(pbpk_data$Species)) {
     for (sx in unique(pbpk_data$Sex)) {
       # Get species-specific model details
       model_info <- species_models[[sp]]
-      
+
       # Skip processing if model_info is NULL or doesn't match Sex
       if (is.null(model_info) || model_info$Sex != sx) {
+        print("Skipping processing for PBPK since model_info is NULL or doesn't match sex.")
         next
       }
-      
+
       # Initialize parameter table if it doesn't exist
       if (is.null(reactive_params[[paste0(sp, "_", sx)]])) {
         reactive_params[[paste0(sp, "_", sx)]] <- data.frame(
           Parameter = if (!is.null(model_info$params)) names(model_info$params) else character(0),
           stringsAsFactors = FALSE
         )
+        print("Initializing parameter table for PBPK model")
       }
-      
+
       # Populate columns dynamically for the supported PFAS
       for (pfas in unique(pbpk_data$PFAS)) {
         if (pfas == model_info$PFAS) {
@@ -810,37 +857,37 @@ server <- function(input, output, session) {
   }
 })
 
-  
+
   #just for debugging
   observeEvent(experiment_data(), {
     shiny::req(experiment_data())
-    
+
     table_data <- experiment_data()
     pbpk_data <- subset(table_data, Model_Type == "PBPK")
-    
+
     for (sp in unique(pbpk_data$Species)) {
       for (sx in unique(pbpk_data$Sex)) {
         model_info <- species_models[[sp]]
-        
+
         if (is.null(model_info)) {
           message("Model info is NULL for Species =", sp)
           next
         }
-        
+
         if (is.na(model_info$Sex)) {
           message("Sex is NA for Species =", sp, "Sex =", sx)
           next
         }
-        
+
         if (model_info$Sex != sx) {
           message("Skipping unsupported combination: Species =", sp, "Sex =", sx)
           next
         }
-        
+
         message("Processing Species =", sp, "Sex =", sx, "Supported PFAS =", model_info$PFAS)
       }
     }
-    
+
     if (is.null(species_models) || length(species_models) == 0) {
       showNotification("Species models data is missing or invalid.", type = "error")
       return(NULL)
@@ -855,15 +902,15 @@ server <- function(input, output, session) {
     shiny::req(experiment_data())
     table_data <- experiment_data()
     pbpk_data <- subset(table_data, Model_Type == "PBPK")
-    
+
     if (nrow(pbpk_data) == 0) return(NULL)
-    
+
     species_sex_combinations <- unique(paste(pbpk_data$Species, pbpk_data$Sex, sep = "_"))
-    
+
     ui_elements <- list()
     for (i in seq(1, length(species_sex_combinations), by = 2)) {
       row_elements <- list()
-      
+
       for (j in 0:1) {
         index <- i + j
         if (index <= length(species_sex_combinations)) {
@@ -871,14 +918,14 @@ server <- function(input, output, session) {
           sp_sex_split <- strsplit(species_sex, "_")[[1]]
           species <- sp_sex_split[1]
           sex <- sp_sex_split[2]
-          
+
           if (!is.null(reactive_params[[paste0(species, "_", sex)]])) {
             row_elements[[j + 1]] <- column(
               width = 6,
               box(
-                title = paste(species, sex, "Model Parameters"), 
-                status = "primary", 
-                solidHeader = TRUE, 
+                title = paste(species, sex, "Model Parameters"),
+                status = "primary",
+                solidHeader = TRUE,
                 width = 12,
                 DTOutput(paste0("params_", species, "_", sex))
               )
@@ -886,15 +933,15 @@ server <- function(input, output, session) {
           }
         }
       }
-      
+
       # Add each pair of species/sex tables to a new row
       ui_elements[[length(ui_elements) + 1]] <- fluidRow(row_elements)
     }
-    
+
     ui_elements
   })
-  
-  
+
+
   # Render and update species/sex-specific parameter tables
   observe({
     for (sp in unique(experiment_data()$Species)) {
@@ -905,8 +952,8 @@ server <- function(input, output, session) {
           output[[paste0("params_", species, "_", sex)]] <- renderDT({
             shiny::req(reactive_params[[paste0(species, "_", sex)]])
             datatable(
-              reactive_params[[paste0(species, "_", sex)]], 
-              editable = TRUE, 
+              reactive_params[[paste0(species, "_", sex)]],
+              editable = TRUE,
               options = list(pageLength = 10, autoWidth = TRUE),
               rownames = FALSE
             )
@@ -915,7 +962,7 @@ server <- function(input, output, session) {
       }
     }
   })
-  
+
   # Update reactive parameters when the DataTable is edited
   observe({
     for (sp in unique(experiment_data()$Species)) {
@@ -1172,7 +1219,7 @@ server <- function(input, output, session) {
         cat("Interval:", interval, "hours\n")
         
         ex <- ev(ID = 1, amt = dose_mg, ii = interval_between_doses, addl = total_doses - 1, cmt = "AST")
-        tgrid <- tgrid(0, exposure_duration_hrs + 96, by = 1)
+        tgrid <- tgrid(0, exposure_duration_hrs + 96, by = 1) #model every 1 hour
       
         
         output <- tryCatch({
@@ -1218,7 +1265,7 @@ server <- function(input, output, session) {
         ka <- if (model_type == "two-compartment") row$Absorption_Coefficient_unitless else NULL
         vd <- row$Volume_of_Distribution_L_per_kg
         n_doses <- floor(exposure_duration_hrs / interval)
-        times <- seq(0, exposure_duration_hrs + 96, by = 1)
+        times <- seq(0, exposure_duration_hrs + 96, by = 1) # model every 1 hr
         
         conc <- if (!is.null(ka)) {
           map_dbl(times, ~ full_conc(dose, vd, ke, ka, interval, n_doses, .x, exposure_duration_hrs))
@@ -1262,6 +1309,10 @@ server <- function(input, output, session) {
     sim_results <- sim_results %>%
       mutate(Legend_Label = paste(Species, PFAS, Sex, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
     
+    # Determine the number of unique legend labels
+    num_colors_needed <- length(unique(sim_results$Legend_Label))
+    custom_colors <- hcl(seq(15, 375, length.out = num_colors_needed), 100, 65)  # Adjust parameters as needed
+    
     # Plot with the custom legend labels
     p <- ggplot(sim_results, aes(x = Time, y = Concentration, color = Legend_Label,
                                  group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
@@ -1280,7 +1331,8 @@ server <- function(input, output, session) {
            x = "Time (days)", 
            y = "Concentration (ug/ml)",
            color = "") +
-      scale_color_discrete_c4a_cat("hcl.dark3") +
+      #scale_color_discrete_c4a_cat("hcl.dark3") +
+      scale_color_manual(values = custom_colors) +
       xlim(0, max(sim_results$Time, na.rm = TRUE) + 4) +
       theme_minimal(base_size = 13) + 
       theme(legend.title = element_blank())
@@ -1336,6 +1388,10 @@ server <- function(input, output, session) {
       10^(ceiling(log10(max(data_range))))
     )
     
+    # Determine the number of unique legend labels
+    num_colors_needed <- length(unique(measured_conc$Legend_Label))
+    custom_colors <- hcl(seq(15, 375, length.out = num_colors_needed), 100, 65)  # Adjust parameters as needed
+    
     #make scatterplot
     p <- ggplot(measured_conc, aes(y = modeled_concentration, 
                                    x = Serum_Concentration_mg_L,
@@ -1354,7 +1410,8 @@ server <- function(input, output, session) {
       geom_point(size = 2, alpha = 0.9) +
       scale_x_log10(limits = expanded_limits) +
       scale_y_log10(limits = expanded_limits) +
-      scale_color_discrete_c4a_cat("hcl.dark3", name = "") +
+      #scale_color_discrete_c4a_cat("hcl.dark3", name = "") +
+      scale_color_manual(values = custom_colors) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") + # Add 10x and 0.1x deviation lines
       geom_abline(slope = 1, intercept = log10(10), linetype = "dotted", color = "gray70") +
       geom_abline(slope = 1, intercept = log10(0.1), linetype = "dotted", color = "gray70") +
