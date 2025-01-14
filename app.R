@@ -55,20 +55,20 @@ species_models <- list(
 
 # Initialize editable table data with unrestricted input fields
 initial_table_data <- data.frame(
-  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOS"),
+  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX"),
                 levels = unique(tk_params$PFAS)),
-  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat"),
+  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat"),
                    levels = c("Rat", "Mouse", "Human", "Monkey")),
-  Sex = factor(c("Female", "Male", "Female", "Female", "Male")),
+  Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male")),
   # Route = factor(c("Intravenous", "Intragastric", "Oral", "Oral") ,
   #                levels = c("Intravenous", "Intragastric", "Intraperitoneal", "Oral", "Dermal")),
-  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "PBPK")),
+  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "biphasic", "PBPK", "biphasic")),
   #Body_Weight_kg = c(0.3, 0.025, 0.3, 0.3),
-  Dose_mg_per_kg = c(175, 35, 62.5, 50, 2.5),
-  Interval_Hours = as.integer(c(24, 24, 24, 24, 24)),
-  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28)),
-  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696)),
-  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 173.7)),
+  Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30),
+  Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24)),
+  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28)),
+  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696)),
+  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA)),
   stringsAsFactors = FALSE
 )
 
@@ -118,6 +118,64 @@ full_conc <- function(D_per_dose, Vd, ke, ka, tau, n, t, exposure_duration_hr) {
   return(concentration)
 }
 
+##The biphasic model for PFAAs that are known to follow such kinetic profile (e.g., GenX, PFOA, PFBS, PFOS) is as follows (doi.org/10.1016/j.envint.2018.01.011):
+two_phase <- function(D_per_dose, 
+                               VDc, # VDc: beta phase volume of distribution (steady-state)
+                               #VD_ss in Gomis et al. (2018), but VDc in EASESUITE - beta phase Vd
+                               k_beta, # k_beta: elimination rate constant (beta phase)
+                               #ke in Gomis et al. (2018), but k_beta in EASESUITE
+                               kabs, # kabs: absorption rate constant
+                               VD2, # VD2: alpha phase volume of distribution (initial distribution)
+                               #VD0 in gomis et al. (2018), but VD2 in EASESuite
+                               k_alpha, # k_alpha: distribution rate constant (alpha phase)
+                               #"k_d" in Gomis et al. (2018, but k_alpha in EASESUITE)
+                               tau, # tau: dosing interval
+                               n_doses, # n_doses: number of doses
+                               t, # t: time points
+                               exposure_duration_hr) {
+  # Initialize concentration vector
+  concentration <- numeric(length(t))
+  
+  # Dynamically calculate t_alpha_end
+  t_alpha_end <- if (!is.na(k_alpha) && !is.na(k_beta) && k_alpha > k_beta) {
+    (log(k_alpha) - log(k_beta)) / (k_alpha - k_beta)
+  } else {
+    0  # If k_alpha or k_beta is invalid, set t_alpha_end to 0
+  }
+  
+  # Loop over each dose administered
+  for (i in 1:n_doses) {
+    dose_time <- (i - 1) * tau  # Time at which the current dose is administered
+    
+    # Loop over each time point
+    for (j in 1:length(t)) {
+      if (t[j] >= dose_time) {  # Only calculate for time points after the dose is administered
+        if (t[j] <= dose_time + t_alpha_end) {  # Alpha phase
+          if (!is.na(kabs) && !is.na(k_alpha) && kabs != k_alpha) {
+            exp_k_alpha <- exp(-k_alpha * (t[j] - dose_time))
+            exp_kabs <- exp(-kabs * (t[j] - dose_time))
+            concentration[j] <- concentration[j] + 
+              (D_per_dose / VD2) * (kabs / (kabs - k_alpha)) * (exp_k_alpha - exp_kabs)
+          }
+        } else {  # Beta phase
+          if (!is.na(k_beta)) {
+            # Calculate concentration at the end of the alpha phase
+            C_alpha_end <- if (!is.na(kabs) && !is.na(k_alpha) && kabs != k_alpha) {
+              (D_per_dose / VD2) * (kabs / (kabs - k_alpha)) * 
+                (exp(-k_alpha * t_alpha_end) - exp(-kabs * t_alpha_end))
+            } else {
+              0
+            }
+            # Beta phase concentration
+            concentration[j] <- concentration[j] + 
+              C_alpha_end * exp(-k_beta * (t[j] - dose_time - t_alpha_end))
+          }
+        }
+      }
+    }
+  }
+  return(concentration)
+}
 
 
 ##### ORIGINAL FORMULA ######
@@ -717,13 +775,17 @@ server <- function(input, output, session) {
              Year = year,
              Source = source
       ) %>% 
-      filter(Endpoint %in% c("CL", "F", "HLe_invivo", "VDss", "kabs")) %>% 
+      filter(Endpoint %in% c("CL", "F", "HLe_invivo", "VDss", "kabs", "VD2", "VDc", "k_alpha", "k_beta")) %>% 
       mutate(Endpoint = case_when(
         Endpoint == "CL" ~ "Clearance",
         Endpoint == "F" ~ "Bioavailable Fraction",
         Endpoint == "HLe_invivo" ~ "Elimination Half-Life",
         Endpoint == "VDss" ~ "Volume of Distribution",
-        Endpoint == "kabs" ~ "Absorption Kinetic Constant"
+        Endpoint == "kabs" ~ "Absorption Kinetic Constant",
+        Endpoint == "VD2" ~ "Volume of Distribution (alpha)",
+        Endpoint == "VDc" ~ "Volume of Distribution (beta)",
+        Endpoint == "k_alpha" ~ "Alpha-phase elimination rate constant",
+        Endpoint == "k_beta" ~ "Beta-phase elimination rate constant"
       ))  %>% 
       mutate(across(c(PFAS, CAS, Species, Strain, Route, Endpoint, Units, `Preferred value`), as.factor)) %>% 
       droplevels() 
@@ -1063,8 +1125,9 @@ server <- function(input, output, session) {
   required_params <- reactive({
     list(
       "PBPK" = NULL,
-      "single-compartment" = c("Clearance_L_per_kg_d", "Volume_of_Distribution_L_per_kg", "Half_Life_hr"),
-      "two-compartment" = c("Clearance_L_per_kg_d", "Volume_of_Distribution_L_per_kg", "Half_Life_hr", "Absorption_Coefficient_unitless")
+      "single-compartment" = c("Volume_of_Distribution_L_per_kg", "Half_Life_hr"),
+      "two-compartment" = c("Volume_of_Distribution_L_per_kg", "Half_Life_hr", "Absorption_Coefficient_unitless"),
+      "biphasic" = c("Volume_of_Distribution_alpha_L_per_kg", "Volume_of_Distribution_beta_L_per_kg", "K_alpha", "K_beta", "Absorption_Coefficient_unitless")
     )
   })
   
@@ -1262,12 +1325,26 @@ server <- function(input, output, session) {
       } else {
         # For simplified model (one or two-compartment)
         ke <- log(2) / row$Half_Life_hr
-        ka <- if (model_type == "two-compartment") row$Absorption_Coefficient_unitless else NULL
-        vd <- row$Volume_of_Distribution_L_per_kg
+        ka <-  row$Absorption_Coefficient_unitless
+        vd <-  row$Volume_of_Distribution_L_per_kg 
+        VD2 <- row$Volume_of_Distribution_alpha_L_per_kg
+        VDc <- row$Volume_of_Distribution_beta_L_per_kg
+        k_alpha <- row$K_alpha
+        k_beta <- row$K_beta
         n_doses <- floor(exposure_duration_hrs / interval)
         times <- seq(0, exposure_duration_hrs + 96, by = 1) # model every 1 hr
         
-        conc <- if (!is.null(ka)) {
+        
+      conc <- if (model_type == "biphasic" & !is.na(ka) & !is.na(VD2) & !is.na(VDc) & !is.na(k_alpha) & !is.na(k_beta)){
+      # biphasic model (if all alpha/beta phase params are available)
+        map_dbl(times, ~ two_phase(D_per_dose = dose, #alpha phase params
+                                                  VD2 = VD2, #VD0_l/kg
+                                                  k_alpha = k_alpha, kabs = ka,
+                                                  #beta phase params
+                                                  k_beta = k_beta, VDc = VDc, #VDss_L/kg
+                                                  tau = interval, n_doses = n_doses, t = .x,
+                                                  exposure_duration_hr = exposure_duration_hrs))
+        } else if (model_type == "two-compartment") {
           map_dbl(times, ~ full_conc(dose, vd, ke, ka, interval, n_doses, .x, exposure_duration_hrs))
         } else {
           map_dbl(times, ~ simplified_conc(dose, vd, ke, interval, n_doses, .x, exposure_duration_hrs))
@@ -1529,8 +1606,8 @@ server <- function(input, output, session) {
       formatStyle(
         target = 'row',
         backgroundColor = styleEqual(
-          c("PBPK", "single-compartment", "two-compartment"), 
-          c("#3A9AB2", "#6FB2C1", "#91BAB6")
+          c("PBPK", "single-compartment", "two-compartment", "biphasic"), 
+          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD1")
         ),
         columns = "Model"  # Specifies to base coloring on the data_available column
       ) 
@@ -1627,8 +1704,8 @@ server <- function(input, output, session) {
       formatStyle(
         target = 'row',
         backgroundColor = styleEqual(
-          c("PBPK", "single-compartment", "two-compartment"), 
-          c("#3A9AB2", "#6FB2C1", "#91BAB6")
+          c("PBPK", "single-compartment", "two-compartment", "biphasic"), 
+          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD6")
         ),
         columns = "Model"  # Specifies to base coloring on the data_available column
       ) %>%

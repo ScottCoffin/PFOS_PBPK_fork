@@ -4,7 +4,7 @@
 library(tidyverse)
 
 getwd()
-tk_params_init <- readxl::read_excel("Additional files/Datasets/general TK/dose_to_serum_data.xlsx",
+tk_params_init <- readxl::read_excel("Additional files/Datasets/general/dose_to_serum_data.xlsx",
                                      sheet = "Matched TK Data")
 
 tk_params <- tk_params_init %>% 
@@ -12,7 +12,8 @@ tk_params <- tk_params_init %>%
   select(chem, sex, species, 
          #strain,
          #route,
-         CLTot_L_kg_day, VDss_L_kg, HLe_invivo, kabs) %>% 
+         CLTot_L_kg_day, VDss_L_kg, HLe_invivo, kabs,
+         VDc, VD2, k_alpha, k_beta) %>% 
   #select(-c(Study, contains("mismatch"),
    #         contains("pubmed"), contains("author_year"))) %>% 
   mutate(across(c(chem, sex, species#, 
@@ -24,7 +25,9 @@ tk_params <- tk_params_init %>%
         Clearance_L_per_kg_d = Cltot_l_kg_day,
         Volume_of_Distribution_L_per_kg = Vdss_l_kg,
         Half_Life_hr = Hle_invivo,
-        Absorption_Coefficient_unitless = Kabs
+        Absorption_Coefficient_unitless = Kabs,
+        Volume_of_Distribution_alpha_L_per_kg = Vd2,
+        Volume_of_Distribution_beta_L_per_kg = Vdc
         ) %>%
   # mutate(Route = case_when(
   #   Route == "dermal" ~ "Dermal",
@@ -43,4 +46,4 @@ tk_params <- tk_params_init %>%
   )) 
 
 
-saveRDS(tk_params, "Additional files/Datasets/general TK/tk_params.rds")
+saveRDS(tk_params, "Additional files/Datasets/general/tk_params.rds")
