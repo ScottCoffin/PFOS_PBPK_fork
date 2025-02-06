@@ -14,6 +14,7 @@ library(tidyverse)
 library(cols4all)
 library(shinyjs)
 library(shinythemes)
+library(shinycssloaders) #shows spinner when loading
 
 
 ############### STATIC DATA ############
@@ -360,23 +361,23 @@ ui <- dashboardPage(
                 tabBox(width = 12,
                        tabPanel(title = "Time-Series Results",
                                 box(title = "Concentration Plot", status = "primary", solidHeader = TRUE, width = 12,
-                                    plotlyOutput("concentrationPlot"),
+                                    withSpinner(plotlyOutput("concentrationPlot")),
                                     p("Download modeled time-series dataset:"),
                                     downloadButton("download_time_conc", "Download Concentration Data")
                                     ),
                                 box(title = "Modeled vs. Measured Concentration", status = "primary", solidHeader = TRUE, width = 12,
-                        plotlyOutput("scatterPlot")),
+                        withSpinner(plotlyOutput("scatterPlot"))),
                         fluidRow(
                           h3("Modeled and Measured Concentrations"),
-                          DTOutput("concentration_at_time")
+                          withSpinner(DTOutput("concentration_at_time"))
                         ),
                         ),
                        tabPanel(title = "Summary Results",
                                 fluidRow(
                                   h3("Summary Values"),
                                   p("Values below for maximum concentration (C_max), area under the curve (AUC), and time-weighted average concentraiton (C_TWA) are in mg/L for serum"),
-                                  DTOutput("summary_table"),
-                                  plotlyOutput("heatmap")
+                                  withSpinner(DTOutput("summary_table")),
+                                  withSpinner(plotlyOutput("heatmap"))
                                   )
                                 )
                        )
@@ -403,7 +404,7 @@ ui <- dashboardPage(
               width = 12,
               p("The OEHHA Chemical Data Explorer Tool helps users rapidly identify, visualize, and access chemical hazard, production, and exposure data."),
               tags$a(
-                href = "https://oehha.shinyapps.io/MasterChemicalList/", 
+                href = "https://oehha.shinyapps.io/OEHHA-Data-Explorer/", 
                 target = "_blank", 
                 tags$span(
                   icon("link"),
@@ -413,7 +414,7 @@ ui <- dashboardPage(
               ),
               tags$span(
                 tags$a(
-                  href = "https://github.com/ScottCoffin/MasterChemicalList", 
+                  href = "https://github.com/ScottCoffin/OEHHA-Data-Explorer/", 
                   target = "_blank",
                   icon("github"),
                   style = "font-size: 2rem; font-weight: bold; color: #007bff; margin-left: 10px;",
@@ -422,7 +423,7 @@ ui <- dashboardPage(
               ),
               br(),
               tags$a(
-                href = "https://oehha.shinyapps.io/MasterChemicalList/",
+                href = "https://oehha.shinyapps.io/OEHHA-Data-Explorer/",
                 target = "_blank",
                 tags$img(src = "chemical_app_screenshot.png", width = "70%", alt = "Screenshot of OEHHA Chemical Data Explorer")
               ),
