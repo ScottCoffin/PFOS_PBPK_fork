@@ -235,8 +235,13 @@ two_phase <- function(D_per_dose,
 # Function to calculate AUC using the trapezoidal rule
 calculate_auc <- function(time, concentration) {
   stopifnot(length(time) == length(concentration))
-  time <- sort(time)
   
+  # Sort time and concentration together
+  sorted_indices <- order(time)
+  time <- time[sorted_indices]
+  concentration <- concentration[sorted_indices]
+  
+  # Apply trapezoidal rule
   auc <- sum((concentration[-1] + concentration[-length(concentration)]) / 2 * diff(time))
   return(auc)
 }
@@ -1561,7 +1566,7 @@ server <- function(input, output, session) {
     # Join with sim_results
     data <- exp_data %>%
       left_join(sim_results, by = c("Time_in_days" = "Time", "Species" = "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg", "Exposure_Duration_Days", "Interval_Hours")) %>%
-      rename("Predicted Concentration (mg/L)" = Concentration,
+      rename("Predicted Concentration @ Hr Serum Collected (mg/L)" = Concentration,
              "Model" = Model_Type,
              "Dose (mg/kg)" = Dose_mg_per_kg,
              "Dosing Interval" = Interval_Hours,
@@ -1646,10 +1651,11 @@ server <- function(input, output, session) {
           time_subset <- Time >= 0 & Time <= Exposure_Duration_Days
           calculate_auc(Time[time_subset], Concentration[time_subset])
         },
-        C_TWA = AUC / (Exposure_Duration_Days - 0)
+        C_TWA = ifelse(!is.na(AUC), AUC / Exposure_Duration_Days, NA)  # Avoid division by zero or NA
       ) %>%
       ungroup() %>% 
-      distinct()
+      distinct() %>% 
+      mutate(across(c(C_max, AUC, C_TWA), ~ signif(.x, 3)))
   })
 
   ##### Summary Stats Table #####
@@ -1663,8 +1669,8 @@ server <- function(input, output, session) {
              "Dose (mg/kg)" = Dose_mg_per_kg,
              "Exposure (Days)" = Exposure_Duration_Days,
              "Maximum Serum Concentration (mg/L)" = C_max,
-             "Area Under Curve Serum Concentration (mg/L)" = AUC,
-             "Time-Weighted Average Serum Concentraiton (mg/L)" = C_TWA)
+             "Area Under Curve Serum Concentration (mg*hr/L)" = AUC,
+             "Time-Weighted Average Serum Concentration (mg/L)" = C_TWA)
 
     # Manually check if the summary statistics exist and are valid
     if (is.null(summary) || nrow(summary) == 0) {
@@ -1709,9 +1715,9 @@ server <- function(input, output, session) {
           c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD6")
         ),
         columns = "Model"  # Specifies to base coloring on the data_available column
-      ) %>%
-      formatSignif(columns = c("Maximum Serum Concentration (mg/L)", "Area Under Curve Serum Concentration (mg/L)", "Time-Weighted Average Serum Concentraiton (mg/L)"),
-                   digits = 4)
+      )# %>%
+      #formatSignif(columns = c("Maximum Serum Concentration (mg/L)", "Area Under Curve Serum Concentration (mg*hr/L)", "Time-Weighted Average Serum Concentration (mg/L)"),
+       #            digits = 4)
   })
 
 #### Summary stats heatmap ####
@@ -1719,12 +1725,13 @@ server <- function(input, output, session) {
     
     params_heat <- summary_stats() %>%
       pivot_longer(
-        cols = c("C_max", "C_TWA"),
+        cols = c("C_max", "C_TWA", "AUC"),
         names_to = "Metric",
         values_to = "Value"
       ) %>%
       mutate(Metric = case_when(
         Metric == "C_max" ~ "Maximum Serum Concentration (mg/L)",
+        Metric == "AUC" ~ "Area Under the Curve Serum Concentration (mg*hr/L)",
         Metric == "C_TWA" ~ "Time-Weighted Average Serum Concentration (mg/L)")) %>% 
       group_by(Metric) %>%
       mutate(
