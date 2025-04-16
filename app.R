@@ -43,6 +43,7 @@ monkey_params <- readRDS("models/monkey_mcmc.rds")
 monkey_best <- monkey_params$bestpar
 
 # general TK params for non PBPK-models
+# This data is prepared in the TK_data_prep.R script. The values in this are imported from the PFHpA Repo (https://github.com/ScottCoffin/PFHpA.git) in output/data/dose_to_serum_data.xlsx
 tk_params <- readRDS("Additional files/Datasets/general/tk_params.rds")
 
 # Define species models and parameters

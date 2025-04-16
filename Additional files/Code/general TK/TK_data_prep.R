@@ -42,6 +42,7 @@ tk_params <- tk_params_init %>%
     PFAS == "PFHXA" ~ "PFHxA",
     PFAS == "PFHXS" ~ "PFHxS",
     PFAS == "PFPRA" ~ "PFPrA",
+    PFAS == "TFA" ~ "TRIFLUOROACETIC ACID",
     T ~ PFAS
   )) 
 
