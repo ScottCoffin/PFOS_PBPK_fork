@@ -46,6 +46,22 @@ monkey_best <- monkey_params$bestpar
 # This data is prepared in the TK_data_prep.R script. The values in this are imported from the PFHpA Repo (https://github.com/ScottCoffin/PFHpA.git) in output/data/dose_to_serum_data.xlsx
 tk_params <- readRDS("Additional files/Datasets/general/tk_params.rds")
 
+## load 'mismatch data' for serving pup interactive plotly ##
+# this is generated in the dose_to_serum.Rmd script in the PFHpA repo!
+mismatch_data <- readRDS("Additional files/Datasets/general/mismatch_data_for_shiny.rds") %>% 
+  mutate(Sex = case_when(
+    sex == "F" ~ "Female",
+    sex == "M" ~ "Male"
+  )) %>% 
+  mutate(PFAS = case_when(
+    chem == "PFHPA" ~ "PFHpA",
+    chem == "PFHXA" ~ "PFHxA",
+    chem == "PFHXS" ~ "PFHxS",
+    chem == "PFPRA" ~ "PFPrA",
+    chem == "TFA" ~ "TRIFLUOROACETIC ACID",
+    T ~ chem
+  )) 
+
 # Define species models and parameters
 species_models <- list(
   Rat = list(PFAS = "PFOS", Sex = "Male", model = ratpbpk, params = rat_best, default_bw = 0.3),   # 0.3 kg for rat
@@ -73,6 +89,9 @@ initial_table_data <- data.frame(
   Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA)),
   stringsAsFactors = FALSE
 )
+
+# validation data (created in PFHpA repo)
+validation_data <- read_excel("Additional files/Datasets/general/validation_data.xlsx")
 
 # Capture the original column types and levels
 original_types <- sapply(initial_table_data, class)
@@ -294,6 +313,7 @@ ui <- dashboardPage(
                             div(style = "text-align: center;",
                                 p(strong("Optionally")," you may upload experimental conditions data. Ensure that all of the above column names are present, and that all fields are valid (i.e., numeric values in numeric columns, factors in factor columns). A sample spreadsheet may be downloaded here that serves as a guide."),
                                 downloadButton("example_experiment_data", "Download Example Spreadsheet"),
+                                downloadButton("validation_data", "Full Validation Dataset"), 
                                 br(),
                                 br(),
                                 fileInput("upload_experiment_data", "Upload Experimental Conditions Table (.csv or .xlsx)", accept = c(".csv", ".xlsx"))
@@ -335,6 +355,12 @@ ui <- dashboardPage(
                                   br(),
                                   p("To view simulation results, go to the ", strong("Results"), "tab on the left side of the app."), 
                                 ),
+                                br(),
+                                h3("View TK data for selected chemical-species-sex combinations"),
+                                box(title = "TK Data for selections", width = 12, collapsible = T, collapsed = F,
+                                    #plotlyOutput("TK_plotly")
+                                    withSpinner(uiOutput("TK_plot.ui"))
+                                    ),
                                 br(),
                                 h3("Explore the full toxicokinetic dataset below:"),
                                 box(title = "Full TK Dataset", width = 12, collapsible = T, collapsed = T,
@@ -562,6 +588,16 @@ server <- function(input, output, session) {
     }
   )
   
+  # Download handler for the full validation CSV
+  output$"validation_data" <- downloadHandler(
+    filename = function() {
+      "validation_data.csv"
+    },
+    content = function(file) {
+      write.csv(validation_data, file, row.names = FALSE)
+    }
+  )
+  
 #################################################### Data entry and Upload #######################################
 ######## Experiment data table #####  
   # Reactive value to store experiment table data
@@ -759,8 +795,128 @@ server <- function(input, output, session) {
     # Update the reactive value with the new data
     params_data(updated_data)
   })
+  
+  
+  #### Plotly for TK Data that's actually powering the app! ###
+  TK_plot <- reactive({
+    # get combos in use for filtering plot #
+    experiment_data <- experiment_data()
+    
+    needed_vals <- experiment_data %>% 
+      distinct(PFAS, Species, Sex) %>% 
+      mutate(combo = paste0(PFAS, Species, Sex))
+    
+    # Normalize the value within each variable (column) group
+    mismatch_data_norm <- mismatch_data %>%
+      mutate(Species = species_name) %>% 
+      mutate(combo = paste0(PFAS, Species, Sex)) %>% 
+     filter(combo %in% needed_vals$combo) %>% 
+     # filter(PFAS %in% needed_vals$PFAS) %>% 
+      group_by(variable) %>%
+     # mutate(normalized_value = (value - min(value, na.rm = TRUE)) / (max(value, na.rm = TRUE) - min(value, na.rm = TRUE))) %>%
+      ungroup() %>%
+      arrange(chem)  # Arrange by chemical
+    
+    # Create the heatmap with the normalized value
+    tk_heat <- ggplot(mismatch_data_norm, 
+                      aes(x = variable, 
+                          y = paste(chem, sex, species_name, sep = " - "), 
+                                              fill = value,
+                                                      #normalized_value + 1e-12,
+                                              text = paste("Chemical:", chem,"<br>",
+                                                           "Species:", species_name, "<br>",
+                                                           "Sex:", sex, "<br>",
+                                                           "Variable:", variable, "<br>",
+                                                           "Value:", value, "<br>",
+                                                           #"Match: ", mismatch_info, "<br>",
+                                                           "Source:", source,"<br>",
+                                                           "PubmedID:", pubmedID
+                                              ))) +
+      geom_tile(color = "white") +
+      
+      # Use the normalized value for the color scale
+      scale_fill_gradient(trans = scales::log_trans(base = 10),
+                          low = "red",
+                          high = "#56B1F7",
+                          space = "Lab",
+                          na.value = "grey50",
+      ) +
+      
+      # Labels and theme
+      labs(x = "Toxicokinetic Parameters", 
+           y = "Chemical - Sex - Species",
+           title = "Toxicokinetic Data") +
+      theme_minimal(base_size = 15) +
+      theme(axis.text.y = element_text(size = 14),  # Adjust the y-axis text size
+            axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+            legend.position = "none")
+    
+    print(tk_heat)
+  })
+  
+  # Create plotly 
+#  output$TK_plotly <- renderPlotly({TK_plotly_react()})
+  
+  session_store <- reactiveValues()
+  
+  # Render TK heatmaply from ggplot      
+  output$TK_plotly <- renderPlotly({
+    TK_plot <- TK_plot()
+    
+    session_store$TK_plotly <- ggplotly(TK_plot, tooltip = "text") %>% 
+      layout(legend = list(orientation = "h",   # Horizontal legend
+                           x = 0.5,              # Center legend horizontally
+                           xanchor = "center",   # Center the legend's position
+                           y = 1.3))            # Position above the plot
+    
+    print(session_store$TK_plotly)
+  })
+  
+  
+  # calculate TK heatmap chemical count for dynamic plotting
+  TK_plot_count <- reactive({
+    filtered_data <- experiment_data()
+    
+    needed_vals <- filtered_data %>% 
+      distinct(PFAS, Species, Sex) %>% 
+      mutate(combo = paste0(PFAS, Species, Sex))
+    
+    as.numeric(n_distinct(needed_vals$combo))
+  })
+  
+  #assign  value for plot height based on column count (pixels)
+  TK_plot_height <- reactive(100 * TK_plot_count())
+  
+  #render UI (dynamic height)
+  output$TK_plot.ui <- renderUI({
+    plotHeight <- TK_plot_height()
+    plotlyOutput("TK_plotly", height = plotHeight)
+  })
+  
+  #create download button for in TK heatmap
+  output$downloadTKPlot <- downloadHandler(
+    filename = function() {
+      paste('TKHeatmap', Sys.Date(), '.', input$plotDevice_TK, sep='')
+    },
+    content = function(file) {
+      ggsave(file, plot = TK_plot(), 
+             width = input$plotWidth_silico, height = input$plotHeight_TK, device = input$plotDevice_TK)
+    }
+  )
+  
+  #download button for silico scatterplotly widget
+  output$download_TKPlotly_widget <- downloadHandler(
+    filename = function() {
+      paste("TKHeatmaply-", Sys.Date(), ".html", sep = "")
+    },
+    content = function(file) {
+      # export plotly html widget as a temp file to download.
+      saveWidget(as_widget(session_store$TK_plotly), file, selfcontained = TRUE)
+    }
+  )
+  
 
-  #### Create data object for plotting
+  #### Create data object for plotting all TK data available (included data not used)
   TK_data <- reactive({
     
     full_tk <- readRDS("Additional files/Datasets/general/tk_df.rds") 
