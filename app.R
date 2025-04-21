@@ -17,6 +17,25 @@ library(shinythemes)
 library(shinycssloaders) #shows spinner when loading
 
 
+#### run this before deploying to update date ###
+# Record the date of app deployment.
+record_deployment_date <-  function(deployment_history_file = "deployment_history.txt") {
+  if (!file.exists(deployment_history_file)) {file.create(deployment_history_file)}
+  # record the time
+  deployment_time <- Sys.Date()
+  cat(paste0(deployment_time, "\n"), file = deployment_history_file, append = TRUE)}
+# be sure to run this to update text file before deployment. 
+#record_deployment_date() #keep commented out for deployment, but execute when updating
+
+# Return the last recorded deployment date of the application.
+load_deployment_date <-
+  function(deployment_history_file = "deployment_history.txt") {
+    deployment_history <- readLines(deployment_history_file)
+    
+    # return the most recent line
+    deployment_history[[length(deployment_history)]]
+  }
+
 ############### STATIC DATA ############
 
 # Load PBPK models for different species
@@ -276,6 +295,7 @@ ui <- dashboardPage(
     tags$img(src="main_logo_drop.png", width = "75%", height = "75%", style = 'display: block; margin-left: auto; margin-right: auto;'),
     tags$div("Logo Copyright OEHHA (2024)", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
     tags$div("Contact: Scott.Coffin@oehha.ca.gov", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
+    uiOutput("deploymentDate"),
     br(),
     br(),
     sidebarMenu(
@@ -320,7 +340,7 @@ ui <- dashboardPage(
                             )
                         )
                     ),
-                    p("Once experimental conditions data are entered above, please proceed by clicking on the", strong("Model Parameters tab"), "on the left side of the app.")
+                    h4("Once experimental conditions data are entered above, please proceed by clicking on the", strong("Model Parameters tab"), "on the left side of the app.")
                 )
               )
       ),
@@ -361,6 +381,11 @@ ui <- dashboardPage(
                                     #plotlyOutput("TK_plotly")
                                     withSpinner(uiOutput("TK_plot.ui"))
                                     ),
+                                box(width = 12, 
+                                     div(style = "display: flex; justify-content: center; align-items: center;", # Center the button
+                                column(width = 2, downloadButton("download_TKPlotly_widget", "Download Plotly", icon("download"), style=" font-size: 15px; padding: 10px 18px; color: #fff; background-color: #337ab7; border-color: #2e6da4")),
+                                ),
+                                ),
                                 br(),
                                 h3("Explore the full toxicokinetic dataset below:"),
                                 box(title = "Full TK Dataset", width = 12, collapsible = T, collapsed = T,
@@ -546,6 +571,14 @@ ui <- dashboardPage(
 ################# SERVER ############
 
 server <- function(input, output, session) {
+  
+  # report dynamic deployment date
+  output$deploymentDate <- renderUI({
+    tags$h4(
+      paste("App updated on", load_deployment_date()),
+      style = "text-align: center; color: #D3D3D3;"
+    )
+  })
   
 ##### RESET BUTTON #####
   observeEvent(input$reset, {
@@ -808,6 +841,16 @@ server <- function(input, output, session) {
     
     # Normalize the value within each variable (column) group
     mismatch_data_norm <- mismatch_data %>%
+      mutate(Units = case_when(
+        variable == "Volume of Distribution" ~ "L/kg",
+        variable == "Clearance" ~ "mL hr^-1 kg^-1",
+        variable == "Elimination Half-Life" ~ "hr",
+        variable == "K_absorption" ~ "hr^-1",
+        variable == "K (alpha phase)" ~ "hr^-1",
+        variable == "K (beta phase)" ~ "hr^-1",
+        variable == "Volume of Distribution (t=0)" ~ "L/kg",
+        variable == "Volume of Distribution (beta phase)" ~ "L/kg"
+      )) %>% 
       mutate(Species = species_name) %>% 
       mutate(combo = paste0(PFAS, Species, Sex)) %>% 
      filter(combo %in% needed_vals$combo) %>% 
@@ -827,7 +870,7 @@ server <- function(input, output, session) {
                                                            "Species:", species_name, "<br>",
                                                            "Sex:", sex, "<br>",
                                                            "Variable:", variable, "<br>",
-                                                           "Value:", value, "<br>",
+                                                           "Value:", value, Units, "<br>",
                                                            #"Match: ", mismatch_info, "<br>",
                                                            "Source:", source,"<br>",
                                                            "PubmedID:", pubmedID
@@ -844,11 +887,11 @@ server <- function(input, output, session) {
       
       # Labels and theme
       labs(x = "Toxicokinetic Parameters", 
-           y = "Chemical - Sex - Species",
-           title = "Toxicokinetic Data") +
+           y = "Chemical - Sex - Species") +
       theme_minimal(base_size = 15) +
       theme(axis.text.y = element_text(size = 14),  # Adjust the y-axis text size
             axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+            plot.title = element_blank(),
             legend.position = "none")
     
     print(tk_heat)
@@ -890,7 +933,7 @@ server <- function(input, output, session) {
   #render UI (dynamic height)
   output$TK_plot.ui <- renderUI({
     plotHeight <- TK_plot_height()
-    plotlyOutput("TK_plotly", height = plotHeight)
+    plotlyOutput("TK_plotly", height = plotHeight, width = 1000)
   })
   
   #create download button for in TK heatmap
