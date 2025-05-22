@@ -394,8 +394,12 @@ ui <- dashboardPage(
                                 ),
                        tabPanel(title = "PBPK Models",
                                 p("This RShiny app allows users to run the optimized models from", a("Chou & Lin et al. (2019). Bayesian evaluation of a physiologically based pharmacokinetic (PBPK) model for perfluorooctane sulfonate (PFOS) to characterize the interspecies uncertainty between mice, rats, monkeys, and humans: Development and performance verification",
-                                                                                                     href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X")),
-                                p("The model was only optimized for", strong("males"), "and via an oral route of exposure. The model consists of four organ compartments (plasma, liver, kidney, and rest of body). For more information, please refer to their publication. A schematic of the PBPK model framework from the publication is shown below:"),
+                                                                                                     href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X"),
+                                  "and", a("Cheng and Ng (2017). A Permeability-Limited Physiologically Based Pharmacokinetic (PBPK) Model for Perfluorooctanoic acid (PFOA) in Male Rats", href = "https://pubs.acs.org/doi/10.1021/acs.est.7b02602")),
+                                p("Both of these model have only been optimized for", strong("males"), "and via an IV and oral route of exposure (PFOS model is oral-only). The model consists of four organ compartments (plasma, liver, kidney, and rest of body). For more information, please refer to their publications.
+                                  Schematic of the PBPK model frameworks from these publications are shown below:"),
+                                h3("PFOS PBPK Male Rat Model"),
+                                br(),
                                 tags$a(
                                   href = "https://www.sciencedirect.com/science/article/pii/S016041201930203X",
                                   target = "_blank",
@@ -403,8 +407,23 @@ ui <- dashboardPage(
                                 ),
                                 br(),
                                 br(),
-                                h3("Customize PBPK Parameters"),
-                                p("This PBPK model is fully customizable (however not recommended)."),
+                                h3("PFOA PBPK Male Rat Model"),
+                                br(),
+                                tags$a(
+                                  href = "https://pubs.acs.org/doi/10.1021/acs.est.7b02602",
+                                  target = "_blank",
+                                  tags$img(src = "PFOA_PBPK.jpeg", width = "70%", alt = "PBPK Framework")
+                                ),
+                                p("Rat model structure.There are seven tissues including blood (B), liver (L), gut (G), kidney (K), muscle (M), adipose (A), and “rest of
+body” (R). All tissues except blood contain both a vascular space (e.g., KB for kidney) and tissue space, the latter of which can be further divided into
+two subcompartments: interstitial fluid (e.g., KF for kidney) and tissue (e.g., KT for kidney). Liver, gut, and kidney also contain bile, gut lumen, and
+filtrate, respectively. Blood flow rate for each tissue is indicated (e.g., QBK is the blood flow rate to kidney). In compartments with albumin, α2μ-
+globulin, or liver-type fatty acid binding protein (L-FABP), PFOA binding occurs. PFOA exchange among connected compartments can occur via
+passive diffusion (all compartments) and active transport (kidney tissue (KT) and liver tissue (LT))."),
+                                br(),
+                                br(),
+                                h2("Customize PBPK Parameters"),
+                                p("The PFOS PBPK model is fully customizable (however not recommended)."),
                                 uiOutput("species_sex_params_grid"),  # Dynamically generate UI for each species' parameters
                        )
                 )
@@ -861,7 +880,7 @@ server <- function(input, output, session) {
       arrange(chem)  # Arrange by chemical
     
     # Create the heatmap with the normalized value
-    tk_heat <- ggplot(mismatch_data_norm, 
+    tk_heat_ggplot <- ggplot(mismatch_data_norm, 
                       aes(x = variable, 
                           y = paste(chem, sex, species_name, sep = " - "), 
                                               fill = value,
@@ -894,6 +913,60 @@ server <- function(input, output, session) {
             plot.title = element_blank(),
             legend.position = "none")
     
+    
+    # Normalize the data by variable (column)
+    mismatch_data_norm <- mismatch_data_norm %>%
+      group_by(variable) %>%
+      mutate(
+        normalized_value = (value - min(value, na.rm = TRUE)) / 
+          (max(value, na.rm = TRUE) - min(value, na.rm = TRUE))
+      ) %>%
+      ungroup()
+    
+    # Define a custom color scale with three colors
+    custom_colorscale <- list(
+      list(0, "#2CA02C"),    # Low values
+      list(0.5, "#1F77B4"), # Mid-range values
+      list(1, "#E73F74")    # High values
+    )
+
+    # Create the heatmap using plot_ly
+    tk_heat <- plot_ly(
+      data = mismatch_data_norm,
+      x = ~variable,  # Columns (x-axis)
+      y = ~paste(chem, sex, species_name, sep = " - "),  # Rows (y-axis)
+      z = ~normalized_value,  # Normalized values for the color scale
+      type = "heatmap",
+      colorscale = custom_colorscale,  # Apply the custom color scale
+      text = ~paste(
+        "Chemical:", chem, "<br>",
+        "Species:", species_name, "<br>",
+        "Sex:", sex, "<br>",
+        "Variable:", variable, "<br>",
+        "Value:", value, Units, "<br>",
+        "Source:", source, "<br>",
+        "PubmedID:", pubmedID
+      ),
+      hoverinfo = "text"  # Use the custom hover text
+    )
+    
+    # Customize layout
+    tk_heat <- tk_heat %>%
+      layout(
+        title = list(title = "Toxicokinetic Parameters Heatmap",
+                     tickfont = list(size = 18)  # Increase x-axis text size
+                     ),
+        xaxis = list(title = "Toxicokinetic Parameters", tickangle = 45,
+                     tickfont = list(size = 16)  # Increase x-axis text size
+                     ),
+        yaxis = list(title = "Chemical - Sex - Species",
+                     tickfont = list(size = 16)  # Increase x-axis text size
+                     ),
+        colorbar = list(title = "Relative Value")
+      )
+    
+    
+    # Display the heatmap
     print(tk_heat)
   })
   
@@ -902,16 +975,18 @@ server <- function(input, output, session) {
   
   session_store <- reactiveValues()
   
-  # Render TK heatmaply from ggplot      
+  # Render TK heatmaply     
   output$TK_plotly <- renderPlotly({
     TK_plot <- TK_plot()
     
-    session_store$TK_plotly <- ggplotly(TK_plot, tooltip = "text") %>% 
-      layout(legend = list(orientation = "h",   # Horizontal legend
-                           x = 0.5,              # Center legend horizontally
-                           xanchor = "center",   # Center the legend's position
-                           y = 1.3))            # Position above the plot
+    # session_store$TK_plotly <- ggplotly(TK_plot, tooltip = "text") %>% 
+    #   layout(legend = list(orientation = "h",   # Horizontal legend
+    #                        x = 0.5,              # Center legend horizontally
+    #                        xanchor = "center",   # Center the legend's position
+    #                        y = 1.3))            # Position above the plot
     
+    session_store$TK_plotly <- TK_plot
+      
     print(session_store$TK_plotly)
   })
   
