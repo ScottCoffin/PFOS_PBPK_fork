@@ -422,6 +422,15 @@ globulin, or liver-type fatty acid binding protein (L-FABP), PFOA binding occurs
 passive diffusion (all compartments) and active transport (kidney tissue (KT) and liver tissue (LT))."),
                                 br(),
                                 br(),
+                                p("Additional PBPK models are available for mice for PFOS, PFOA, and PFHxS via the oral, nasal, dermal, and IV pathways based on the models described in", a("Zhu et al. (2023). Exploring Route-Specific Pharmacokinetics of PFAS in Mice by Coupling In Vivo tests and Physiologically Based Toxicokinetic Models.", href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969")),
+                                h3("PFOS, PFOA, PFHxS Male Mouse Models"),
+                                tags$a(
+                                  href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969",
+                                  target = "_blank",
+                                  tags$img(src = "ehp11969_f1.jpg", width = "70%", alt = "PBPK Framework")
+                                ),
+                                br(),
+                                br(),
                                 h2("Customize PBPK Parameters"),
                                 p("The PFOS PBPK model is fully customizable (however not recommended)."),
                                 uiOutput("species_sex_params_grid"),  # Dynamically generate UI for each species' parameters
