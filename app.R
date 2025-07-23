@@ -452,6 +452,8 @@ passive diffusion (all compartments) and active transport (kidney tissue (KT) an
                                     ),
                                 box(title = "Modeled vs. Measured Concentration", status = "primary", solidHeader = TRUE, width = 12,
                         withSpinner(plotlyOutput("scatterPlot"))),
+                        downloadButton("download_scatterPlot_widget", "Download Interactive Plotly", icon("download"), style=" font-size: 15px; padding: 10px 18px; color: #fff; background-color: #FFA500; border-color: #2e6da4"),
+                        br(),
                         fluidRow(
                           h3("Modeled and Measured Concentrations"),
                           withSpinner(DTOutput("concentration_at_time"))
@@ -1721,27 +1723,8 @@ server <- function(input, output, session) {
     # Join with sim_results
     measured_conc <- exp_data %>%
       left_join(sim_results, by = c("Time_in_days" = "Time", "Species" = "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg", "Exposure_Duration_Days", "Interval_Hours")) %>%
-      # rename("Predicted Concentration (mg/L)" = Concentration,
-      #        "Model" = Model_Type,
-      #        "Dose (mg/kg)" = Dose_mg_per_kg,
-      #        "Dosing Interval" = Interval_Hours,
-      #        "Exposure (Days)" = Exposure_Duration_Days,
-      #        "Hr Serum Collected" = Time_Serum_Collected_hr,
-      #        "Measured Concentration (mg/L)" = Serum_Concentration_mg_L
-      # ) %>% 
-   #   select(-Time_in_days) %>% 
-    #  mutate(across(c(PFAS, Species, Sex, Model), as.factor)) %>% 
       rename(modeled_concentration = Concentration) %>% 
       mutate(Legend_Label = paste(Species, PFAS, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
-    
-    #legacy approach
-    # measured_conc <- exp_data %>%
-    #   mutate(modeled_concentration = map2_dbl(Time_Serum_Collected_hr, Species, function(time, species) {
-    #     subset(sim_results, Time == time / 24 & Species == species)$Concentration[1]
-    #   })) %>%
-    #   filter(!is.na(modeled_concentration)) %>% 
-    #   # custom legend for plot
-    #   mutate(Legend_Label = paste(Species, PFAS, Model_Type, paste0(Dose_mg_per_kg, " mg/kg"), sep = " | "))
     
     # Calculate dynamic limits based on the data range
     data_range <- range(
@@ -1790,8 +1773,21 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 15) +
       theme(legend.title = element_blank())
     
-    ggplotly(p, tooltip = "text")
+    session_store$scatterPlot <- ggplotly(p, tooltip = "text")
+    
+    print(session_store$scatterPlot)
   })
+  
+  #download button for scatterplotly widget
+  output$download_scatterPlot_widget <- downloadHandler(
+    filename = function() {
+      paste("scatterPlot-", Sys.Date(), ".html", sep = "")
+    },
+    content = function(file) {
+      # export plotly html widget as a temp file to download.
+      saveWidget(as_widget(session_store$scatterPlot), file, selfcontained = TRUE)
+    }
+  )
   
   ###### Excel Sheet for downloading time-concentration data
   output$download_time_conc <- downloadHandler(
