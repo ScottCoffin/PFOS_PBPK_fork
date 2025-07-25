@@ -65,6 +65,13 @@ monkey_best <- monkey_params$bestpar
 # This data is prepared in the TK_data_prep.R script. The values in this are imported from the PFHpA Repo (https://github.com/ScottCoffin/PFHpA.git) in output/data/dose_to_serum_data.xlsx
 tk_params <- readRDS("Additional files/Datasets/general/tk_params.rds")
 
+#imprt entire EAS-E Suite + additional data to get sources
+tk_df <- readRDS("Additional files/Datasets/general/tk_df.rds") %>% 
+  mutate(source = paste(authors, year)) %>% 
+  select(source, pubmed_id, doi) %>% 
+  distinct(source, .keep_all = T) 
+  
+
 ## load 'mismatch data' for serving pup interactive plotly ##
 # this is generated in the dose_to_serum.Rmd script in the PFHpA repo!
 mismatch_data <- readRDS("Additional files/Datasets/general/mismatch_data_for_shiny.rds") %>% 
@@ -79,7 +86,9 @@ mismatch_data <- readRDS("Additional files/Datasets/general/mismatch_data_for_sh
     chem == "PFPRA" ~ "PFPrA",
     chem == "TFA" ~ "TRIFLUOROACETIC ACID",
     T ~ chem
-  )) 
+  )) %>% 
+  # join with tk_params to get doi based on source
+  left_join(tk_df, by = "source")
 
 # Define species models and parameters
 species_models <- list(
@@ -387,6 +396,15 @@ ui <- dashboardPage(
                                 ),
                                 ),
                                 br(),
+                                h3("An interactive datatable of the parameters selected in your models are below:"),
+                                box(title = "Selected TK Parameter Dataset", width = 12, collapsible = T,
+                                    DTOutput("TK_used_DT"),
+                                    ),
+                                br(),
+                                h4("Expand the below table to view sources"),
+                                box(title = "Selected TK Parameter Dataset (sources)", width = 12, collapsible = T, collapsed = T,
+                                    DTOutput("TK_sources_used_DT")
+                                ),
                                 h3("Explore the full toxicokinetic dataset below:"),
                                 box(title = "Full TK Dataset", width = 12, collapsible = T, collapsed = T,
                                     DTOutput("Full_TK_Datatable"),
@@ -859,9 +877,8 @@ server <- function(input, output, session) {
     params_data(updated_data)
   })
   
-  
-  #### Plotly for TK Data that's actually powering the app! ###
-  TK_plot <- reactive({
+  # create reactive df used in TK plotly and DT
+  mismatch_data_norm_reactive <- reactive({
     # get combos in use for filtering plot #
     experiment_data <- experiment_data()
     
@@ -883,13 +900,191 @@ server <- function(input, output, session) {
       )) %>% 
       mutate(Species = species_name) %>% 
       mutate(combo = paste0(PFAS, Species, Sex)) %>% 
-     filter(combo %in% needed_vals$combo) %>% 
-     # filter(PFAS %in% needed_vals$PFAS) %>% 
+      filter(combo %in% needed_vals$combo) %>% 
       group_by(variable) %>%
-     # mutate(normalized_value = (value - min(value, na.rm = TRUE)) / (max(value, na.rm = TRUE) - min(value, na.rm = TRUE))) %>%
       ungroup() %>%
       arrange(chem)  # Arrange by chemical
+  
     
+    #print
+    mismatch_data_norm
+  })
+  
+  #### create interactive DT for TK data used in selection ###
+  output$TK_used_DT <- renderDT(server = F,{
+    
+    tk_df <- mismatch_data_norm_reactive() %>% 
+      select(PFAS, Species, Sex, variable, value, Units) %>% 
+      # concatenate variable with Units using parentheses
+      mutate(variable = paste(variable, " (", Units, ")", sep = "")) %>%
+      select(-Units) %>% 
+      distinct() %>% 
+      # pivot wider on variable with value
+      pivot_wider(names_from = variable, values_from = value)
+      print("Rendering Used TK datatable...")
+      
+    
+    # Define the color palette based on your existing scheme
+    color_palette <- c(
+      "#fdb80b",  # Yellow
+      "#0097ab",  # Teal
+      "#0a4531",  # Dark Green
+      "#017a3d",  # Medium Green
+      "#f7a600",  # Gold (analogous to yellow)
+      "#00758f",  # Deep teal
+      "#044d34"   # Very dark green
+    )
+    # Define a corresponding text color palette (white for dark colors)
+    text_palette <- c(
+      "black",    # Yellow
+      "white",    # Teal
+      "white",    # Dark Green
+      "white",    # Medium Green
+      "black",    # Gold
+      "white",    # Deep Teal
+      "white"     # Very Dark Green
+    )
+    
+    # Get unique species
+    species_levels <- unique(tk_df$Species)
+    
+    # Dynamically truncate or recycle the color palette
+    color_palette_final <- rep(color_palette, length.out = length(species_levels))
+    text_palette_final <- rep(text_palette, length.out = length(species_levels))
+    
+    dt <- datatable(tk_df,
+                    rownames = F,
+                    extensions = 'Buttons', #enable buttons extension
+                    filter = "top",
+                    options = list(pageLength = 25, autoWidth = TRUE,  width = '100%', scrollX = TRUE,
+                                   dom = 'Blrtip', 
+                                   buttons = list(
+                                     # insert buttons with copy and print
+                                     # colvis includes the button to select and view only certain columns in the output table
+                                     # from https://rstudio.github.io/DT/extensions.html 
+                                     I('colvis'), 'copy', 
+                                     # code for the first dropdown download button. this will download only the current page only (depends on the number of rows selected in the lengthMenu)
+                                     # using modifier = list(page = "current")
+                                     # only the columns visible will be downloaded using the columns:":visible" option from:
+                                     list(extend = 'collection', buttons = list(list(extend = "csv", filename = "page",exportOptions = list(
+                                       columns = ":visible",modifier = list(page = "current"))),
+                                       list(extend = 'excel', filename = "page", title = NULL, 
+                                            exportOptions = list(columns = ":visible",modifier = list(page = "current")))),
+                                       text = 'Download current page'),
+                                     # code for the  second dropdown download button
+                                     # this will download the entire dataset using modifier = list(page = "all")
+                                     list(extend = 'collection',
+                                          buttons = list(list(extend = "csv", filename = "data",exportOptions = list(
+                                            columns = ":visible",modifier = list(page = "all"))),
+                                            list(extend = 'excel', filename = "data", title = NULL, 
+                                                 exportOptions = list(columns = ":visible",modifier = list(page = "all")))),
+                                          text = 'Download all data')),
+                                   # add the option to display more rows as a length menu
+                                   lengthMenu = list(c(10, 30, 50, -1),
+                                                     c('10', '30', '50', 'All'))),class = "display"
+    ) %>%  formatStyle(
+        columns = "Species",
+        target = "row",
+        backgroundColor = styleEqual(species_levels, color_palette_final),
+        color = styleEqual(species_levels, text_palette_final)
+      )
+
+    dt
+
+         })
+  
+  #### create interactive DT for TK data (sources only) used in selection ###
+  output$TK_sources_used_DT <- renderDT(server = F,{
+    
+    print(head(mismatch_data_norm_reactive()))
+    
+    tk_df <- mismatch_data_norm_reactive() %>% 
+      select(PFAS, Species, Sex, variable, source, pubmedID, doi, Units) %>% 
+      # concatenate variable with Units using parentheses
+      mutate(variable = paste(variable, " (", Units, ")", sep = "")) %>%
+      #PubMedID = pubmed_id
+      mutate(source = paste(source, " (PMID:", pubmedID , "; DOI:", doi, ")", sep = "")) %>% 
+      select(-Units, - pubmedID, - doi) %>% 
+      distinct() %>% 
+      # pivot wider on variable with value
+      pivot_wider(names_from = variable, values_from = source)
+    print("Rendering Used TK Sources datatable...")
+    
+    # Define the color palette based on your existing scheme
+    color_palette <- c(
+      "#fdb80b",  # Yellow
+      "#0097ab",  # Teal
+      "#0a4531",  # Dark Green
+      "#017a3d",  # Medium Green
+      "#f7a600",  # Gold (analogous to yellow)
+      "#00758f",  # Deep teal
+      "#044d34"   # Very dark green
+    )
+    # Define a corresponding text color palette (white for dark colors)
+    text_palette <- c(
+      "black",    # Yellow
+      "white",    # Teal
+      "white",    # Dark Green
+      "white",    # Medium Green
+      "black",    # Gold
+      "white",    # Deep Teal
+      "white"     # Very Dark Green
+    )
+    
+    # Get unique species
+    species_levels <- unique(tk_df$Species)
+    
+    # Dynamically truncate or recycle the color palette
+    color_palette_final <- rep(color_palette, length.out = length(species_levels))
+    text_palette_final <- rep(text_palette, length.out = length(species_levels))
+    
+    dt <- datatable(tk_df,
+                    rownames = F,
+                    extensions = 'Buttons', #enable buttons extension
+                    filter = "top",
+                    options = list(pageLength = 25, autoWidth = TRUE,  width = '100%', scrollX = TRUE,
+                                   dom = 'Blrtip', 
+                                   buttons = list(
+                                     # insert buttons with copy and print
+                                     # colvis includes the button to select and view only certain columns in the output table
+                                     # from https://rstudio.github.io/DT/extensions.html 
+                                     I('colvis'), 'copy', 
+                                     # code for the first dropdown download button. this will download only the current page only (depends on the number of rows selected in the lengthMenu)
+                                     # using modifier = list(page = "current")
+                                     # only the columns visible will be downloaded using the columns:":visible" option from:
+                                     list(extend = 'collection', buttons = list(list(extend = "csv", filename = "page",exportOptions = list(
+                                       columns = ":visible",modifier = list(page = "current"))),
+                                       list(extend = 'excel', filename = "page", title = NULL, 
+                                            exportOptions = list(columns = ":visible",modifier = list(page = "current")))),
+                                       text = 'Download current page'),
+                                     # code for the  second dropdown download button
+                                     # this will download the entire dataset using modifier = list(page = "all")
+                                     list(extend = 'collection',
+                                          buttons = list(list(extend = "csv", filename = "data",exportOptions = list(
+                                            columns = ":visible",modifier = list(page = "all"))),
+                                            list(extend = 'excel', filename = "data", title = NULL, 
+                                                 exportOptions = list(columns = ":visible",modifier = list(page = "all")))),
+                                          text = 'Download all data')),
+                                   # add the option to display more rows as a length menu
+                                   lengthMenu = list(c(10, 30, 50, -1),
+                                                     c('10', '30', '50', 'All'))),class = "display"
+    ) %>%  formatStyle(
+      columns = "Species",
+      target = "row",
+      backgroundColor = styleEqual(species_levels, color_palette_final),
+      color = styleEqual(species_levels, text_palette_final)
+    )
+    
+    dt
+    
+  })
+  
+  #### Plotly for TK Data that's actually powering the app! ###
+  TK_plot <- reactive({
+   
+    #import reactive df from above
+    mismatch_data_norm <- mismatch_data_norm_reactive()
+      
     # Create the heatmap with the normalized value
     tk_heat_ggplot <- ggplot(mismatch_data_norm, 
                       aes(x = variable, 
