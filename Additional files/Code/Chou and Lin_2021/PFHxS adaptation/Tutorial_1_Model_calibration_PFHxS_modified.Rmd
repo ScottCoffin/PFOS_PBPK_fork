@@ -9,11 +9,17 @@ output:
     theme: cerulean
     toc: true
     toc_depth: 2
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_chunk$set(fig.width = 13, fig.height = 10) 
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.width = 13,
+  fig.height = 10,
+  dev = "png",
+  fig.align = "center"
+)
 ```
 
 # Setup
@@ -35,10 +41,10 @@ library(minpack.lm)  ## R-package for model fitting
 The rat pre-pregnant, gestational and lactational PBPK model were written in `RMod.R` file. Before compiling the model, please call this file using R function `source`. 
 ```{r}
 # PFOS code
-#source(file = "Additional files/Code/Chou and Lin_2021/ModFit/Rat/RMod.R") ## input the rat gestational model
+source(file = "Additional files/Code/Chou and Lin_2021/ModFit/Rat/RMod.R") ## input the rat gestational model
 
 # PFHxS code
-source(file = "Additional files/Code/Chou and Lin_2021/PFHxS adaptation/RMod_PFHxS.R") ## input the rat gestational model
+#source(file = "Additional files/Code/Chou and Lin_2021/PFHxS adaptation/RMod_PFHxS.R") ## input the rat gestational model
 ```
 
 ## Build mrgsolve-based PBPK Model
@@ -293,7 +299,7 @@ OBS.MB2 <- Data_0 %>% filter(Study == 1 & Sample == "MB", Dose == 50)   %>%  sel
 ```{r}
 ## Exposure scenario B. Dosing from GD0 - PND20;
 pred.B <- function(Lpars, DOSE) {
-    
+    tryCatch({
 ## Get out of log domain
 #Gpars <- lapply(GFit$par, exp)## Return a list of exp (parametrs for gestational model) from log scale
 
@@ -417,9 +423,10 @@ Lout <- Lmod_R %>%
               A_baso = Init$A_baso, A_apical = Init$A_apical, Adif = Init$Adif, Aefflux = Init$Aefflux,   
               APlas_free_pup = Init$APlas_Fet_free, AL_pup = Init$AL_Fet, ARest_pup = Init$ARest_Fet) %>%
         param (Lpars) %>%
-        update(atol = 1E-6, maxsteps = 500000) %>%          
+        update(atol = 1E-6, maxsteps = 500000) %>%          # origiinal tolerance
+       # update(atol = 1e-9, rtol = 1e-9, maxsteps = 5e6) %>% 
         mrgsim_d (data = Lex.oral, tgrid = Ltsamp) 
-    
+
 Loutdf = cbind.data.frame(Time   = Lout$time + 22*24,   # Simulation time + GD22 (22*24 hours)
                           CPlas  = Lout$Plasma,         # Maternal plasma
                           CPlas_pup = Lout$Plasma_pup,  # Neonatal palsma
@@ -427,6 +434,16 @@ Loutdf = cbind.data.frame(Time   = Lout$time + 22*24,   # Simulation time + GD22
                           )
     
 return (Loutdf)
+  }, error = function(e) {
+    message("[!] pred.B failed: ", e$message)
+    # # Fallback dummy data (replace Ltsamp if needed)
+    # dummy_time <- seq(0, 504, by = 24)
+    # return(data.frame(Time = dummy_time,
+    #                   CPlas = rep(1e6, length(dummy_time)),
+    #                   CPlas_pup = rep(1e6, length(dummy_time)),
+    #                   CMilk = rep(1e6, length(dummy_time))))
+  })
+
 }
 
 ```
@@ -441,14 +458,14 @@ Lcost<-function (pars){
     outdf.B <- pred.B (Lpars = pars,  DOSE = 50)
     
     # maternal plasma
-    cost<- modCost  (model = outdf.A, obs = OBS.MP1, x ="Time")
-    cost<- modCost  (model = outdf.B, obs = OBS.MP2, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A, obs = OBS.MP1[c("Time", "CPlas")], x ="Time")
+    cost<- modCost  (model = outdf.B, obs = OBS.MP2[c("Time", "CPlas")], x ="Time", cost = cost)
     # fetal plasma
-    cost<- modCost  (model = outdf.A, obs = OBS.FP1, x ="Time", cost = cost)
-    cost<- modCost  (model = outdf.B, obs = OBS.FP2, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A, obs = OBS.FP1[c("Time", "CPlas_pup")], x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.B, obs = OBS.FP2[c("Time", "CPlas_pup")], x ="Time", cost = cost)
     # milk band (stomach contents)
-    cost <- modCost (model = outdf.A, obs = OBS.MB1, x = "Time", cost = cost)
-    cost <- modCost (model = outdf.B, obs = OBS.MB2, x = "Time", cost = cost)
+    cost <- modCost (model = outdf.A, obs = OBS.MB1[c("Time", "CMilk")], x = "Time", cost = cost)
+    cost <- modCost (model = outdf.B, obs = OBS.MB2[c("Time", "CMilk")], x = "Time", cost = cost)
     
     return(cost)
 }
@@ -456,10 +473,53 @@ Lcost<-function (pars){
 ```
 
 ## List the inital parameter for the later used in senstivity anlaiysis
-All the values of parameters are initial values before optimization from Chou and Lin (2019) and Loccisano et al. (2012).
+### PFOS
 ```{r}
 ## initial parmaeters for the lactational model
-Ltheta.int <- log(c(
+Ltheta_PFOS.int <- log(c(
+    Vmax_baso_invitro              = 393.45,
+    Km_baso                        = 27.2,
+    Vmax_apical_invitro            = 1808,
+    Km_apical                      = 278,
+    RAFbaso                        = 1.90,
+    RAFapi                         = 4.15,
+    KeffluxC                       = 2.09,
+    KbileC                         = 0.0026,
+    KurineC                        = 1.6,
+    Free                           = 0.022,
+    PL                             = 3.66,
+    PK                             = 0.8,
+    PM                             = 0.16,
+    PF                             = 0.13,
+    PRest                          = 0.26,
+    PMilkM                         = 1.9,
+    PMilkP                         = 0.11,
+    PAMilkC                        = 0.5,
+    K0C                            = 1,
+    KabsC                          = 2.12,
+    KunabsC                        = 7.05e-5,
+    Kdif                           = 5.1e-4,
+    KMilk0                         = 0.0268,
+    Free_pup                       = 0.022,
+    PL_pup                         = 3.66,
+    PK_pup                         = 0.8,
+    PRest_pup                      = 0.22,
+    KabsC_pup                      = 2.12,
+    KbileC_pup                     = 0.35,
+    KurineC_pup                    = 1.6,
+    KeffluxC_p                     = 2.09,
+    Kdif_pup_0                     = 0.001,
+    Vmax_baso_invitro_p            = 393.45,
+    Km_baso_p                      = 27.2,
+    Vmax_apical_invitro_p          = 1808,
+    Km_apical_p                    = 278
+))
+```
+
+### PFHxS
+```{r}
+## initial parmaeters for the lactational model
+Ltheta_PFHxS.int <- log(c(
     Vmax_baso_invitro              = 393.45,
     Km_baso                        = 27.2,
     Vmax_apical_invitro            = 4164, #pmol/min/mg protein, Fragki et al (2023)
@@ -484,7 +544,7 @@ Ltheta.int <- log(c(
     Kdif                           = 5.1e-4,
     KMilk0                         = 0.0268, #Loccisano et al., 2012 (rat PBPK model assumption for lactation)
     Free_pup                       = 0.022,
-    PL_pup                         = 3.66,
+    PL_pup                         = 0.11,
     PK_pup                         = 0.8,
     PRest_pup                      = 0.22,
     KabsC_pup                      = 2.12,
@@ -502,10 +562,13 @@ Ltheta.int <- log(c(
 
 ## Sensivity analysis
 ```{r}
+# define Ltheta
+Ltheta.int <- Ltheta_PFHxS.int
 SnsPlasma <- sensFun(func = Lcost, parms = Ltheta.int, varscale = 1)
 Sen       <- summary(SnsPlasma)
 plot(summary(SnsPlasma))
 ```
+
 
 ## Select senstive parameters; 
 ```{r}
@@ -514,23 +577,66 @@ Ltheta
 ```
 
 ## Select senstive parameters and relavant parameters based on available data
+### PFHxS
 ```{r}
-Ltheta <- log(c(
+Ltheta_PFHxS <- log(c(
+    #Vmax_baso_invitro              = 393.45, #PFOS
+    #Km_baso                        = 27.2,
+    Vmax_apical_invitro            = 4164, #PFHxS
+    #Km_apical                      = 278, #PFOS
+    #RAFbaso                        = 1.90,
+    #RAFapi                         = 4.15, #PFOS
+    #KeffluxC                       = 2.09,
+    #KbileC                         = 0.0026,
+    #KurineC                        = 1.6,
+    Free                           = 0.0008, #PFHxS
+    PL                             =  3.66, # 0.11, #PFHxS
+    #PK                             = 0.8,
+    #PM                             = 0.16,
+    #PF                             = 0.13,
+    #PRest                          = 0.2,
+    #PMilkM                         = 1.9,
+    #PMilkP                         = 0.11,
+    #PAMilkC                        = 0.5,
+    #K0C                            = 1,
+    #KabsC                          = 2.12,
+    #KunabsC                        = 7.05e-5,
+    #Kdif                           = 5.1e-4,
+    #KMilk0                         = 0.0268,
+    Free_pup                       = 0.0008,
+    PL_pup                         =  3.66#, #0.11,
+    #PK_pup                         = 0.8,
+    #PRest_pup                      = 0.22,
+    #KabsC_pup                      = 2.12,
+    #KbileC_pup                     = 0.0026,
+    #KurineC_pup                    = 1.6
+    #KeffluxC_p                     = 2.09,
+    #Kdif_pup_0                     = 0.001#,
+    #Vmax_baso_invitro_p            = 393.45, #PFOS
+    #Km_baso_p                      = 27.2,
+    #Vmax_apical_invitro_p          = 4164 #PFHxS
+    #Km_apical_p                    = 278
+))
+```
+
+### PFOS
+```{r}
+Ltheta_PFOS <- log(c(
     #Vmax_baso_invitro              = 393.45,
     #Km_baso                        = 27.2,
-    Vmax_apical_invitro            = 4164,
+    Vmax_apical_invitro            = 1808,
     #Km_apical                      = 278,
     #RAFbaso                        = 1.90,
     #RAFapi                         = 4.15,
     #KeffluxC                       = 2.09,
     #KbileC                         = 0.0026,
     #KurineC                        = 1.6,
-    Free                           = 0.0008,
-    PL                             = 0.11,
+    Free                           = 0.022,
+    PL                             = 3.66,
     #PK                             = 0.8,
     #PM                             = 0.16,
     #PF                             = 0.13,
-    PRest                          = 0.2,
+    PRest                          = 0.26,
     PMilkM                         = 1.9,
     #PMilkP                         = 0.11,
     #PAMilkC                        = 0.5,
@@ -554,9 +660,25 @@ Ltheta <- log(c(
     #Km_apical_p                    = 278
 ))
 ```
+
 ## Least squares fit using levenberg-marquart algorithm
 ```{r}
+Ltheta <- Ltheta_PFOS
+#Ltheta <- Ltheta_PFHxS
+#Ltheta <- Ltheta_PFHxS.int
+
+# Clip any out-of-bounds starting values
+#Ltheta <- pmin(pmax(Ltheta, log(1e-4)), log(1e2))
+
+# Define prior values (log-scale)
+Ltheta_prior <- Ltheta
+lower_bounds <- Ltheta_prior - 2
+upper_bounds <- Ltheta_prior + 2
+
 LFit <- modFit(f = Lcost, p = Ltheta, method ="Marq",
+               # constrain params to biologically-plausible range
+               #lower = lower_bounds,
+               #upper = upper_bounds,
                control = nls.lm.control(nprint = 1))
 ```
 
@@ -571,6 +693,7 @@ exp(LFit$par)    ## Converted the log-tranfromed parmaeters to arithmetic value
 ```{r warning=FALSE}
 Lcost(LFit$par)
 ```
+
 
 
 # Save results
@@ -614,6 +737,7 @@ OBS.FP2$Dose <- "50 mg/kg"
 OBS.MB1$Dose <- "17 mg/kg"
 OBS.MB2$Dose <- "50 mg/kg"
 
+
 # Merge observed
 obs_all <- bind_rows(
   OBS.MP1 %>% rename(Conc = CPlas),
@@ -622,7 +746,9 @@ obs_all <- bind_rows(
   OBS.FP2 %>% rename(Conc = CPlas_pup),
   OBS.MB1 %>% rename(Conc = CMilk),
   OBS.MB2 %>% rename(Conc = CMilk)
-)
+) %>% 
+  #join SDs
+  left_join(Data_0 %>% select(Time, SD, Conc), by = c("Time",  "Conc")) 
 
 custom_colors <- c(
   "Dam serum (model)" = "#1f77b4",
@@ -634,18 +760,58 @@ custom_colors <- c(
 )
 
 
-# Plot
-ggplot() +
-  geom_line(data = sim_long, aes(x = Time, y = Conc_pred, color = Compartment), linewidth = 1) +
-  geom_point(data = obs_all, aes(x = Time, y = Conc, color = Compartment, shape = Compartment), size = 6, alpha = 1) +
-  scale_color_manual(values = custom_colors) +
+library(ggpubr)
+# 1. Dam serum plot
+p_dam <- ggplot() +
+  geom_line(data = filter(sim_long, Compartment == "Dam serum (model)"),
+            aes(x = Time, y = Conc_pred, color = Compartment), linewidth = 1) +
+  geom_point(data = filter(obs_all, Compartment == "Dam serum (obs)"),
+             aes(x = Time, y = Conc, color = Compartment, shape = Compartment), size = 4) +
+  geom_errorbar(aes(x = Time, ymin = Conc - SD, ymax = Conc + SD, color = Compartment, shape = Compartment), 
+                data = filter(obs_all, Compartment == "Dam serum (obs)"), 
+                width = 5) +
   scale_x_continuous(limits = c(530, 1000)) +
-  scale_y_continuous(limits = c(0, 225)) +
+  scale_y_continuous(limits = c(0, 250)) +
+  scale_color_manual(values = custom_colors) +
   facet_wrap(~Dose) +
-  labs(title = "PFHxS Model Predictions vs. Observed Serum and Milk Band Data",
-       x = "Time (hr)", y = "PFHxS (µg/mL)") +
-  theme_bw(base_size = 15) +
-  theme(legend.position = "bottom") 
+  labs(title = "Dam Serum", x = "Time (hr)", y = "PFHxS (µg/mL)") +
+  theme_bw(base_size = 15)
+
+# 2. Pup serum plot
+p_pup <- ggplot() +
+  geom_line(data = filter(sim_long, Compartment == "Pup serum (model)"),
+            aes(x = Time, y = Conc_pred, color = Compartment), linewidth = 1) +
+  geom_point(data = filter(obs_all, Compartment == "Pup serum (obs)"),
+             aes(x = Time, y = Conc, color = Compartment, shape = Compartment), size = 4) +
+  geom_errorbar(aes(x = Time, ymin = Conc - SD, ymax = Conc + SD, color = Compartment, shape = Compartment), 
+                data = filter(obs_all, Compartment == "Pup serum (obs)"), 
+                width = 5) +
+  scale_x_continuous(limits = c(530, 1000)) +
+  scale_y_continuous(limits = c(0, 75)) +
+  scale_color_manual(values = custom_colors) +
+  facet_wrap(~Dose) +
+  labs(title = "Pup Serum", x = "Time (hr)", y = "PFHxS (µg/mL)") +
+  theme_bw(base_size = 15)
+
+# 3. Milk band plot
+p_milk <- ggplot() +
+  geom_line(data = filter(sim_long, Compartment == "Milk band (model)"),
+            aes(x = Time, y = Conc_pred, color = Compartment), linewidth = 1) +
+  geom_point(data = filter(obs_all, Compartment == "Milk band (obs)"),
+             aes(x = Time, y = Conc, color = Compartment, shape = Compartment), size = 4) +
+  geom_errorbar(aes(x = Time, ymin = Conc - SD, ymax = Conc + SD, color = Compartment, shape = Compartment), 
+                data = filter(obs_all, Compartment == "Milk band (obs)"), 
+                width = 5) +
+  scale_x_continuous(limits = c(530, 1000)) +
+  scale_color_manual(values = custom_colors) +
+  facet_wrap(~Dose) +
+  labs(title = "Milk Band", x = "Time (hr)", y = "PFHxS (µg/mL)") +
+  theme_bw(base_size = 15)
+
+# Combine plots
+ggarrange(p_dam, p_pup, p_milk, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+
 ```
 
 
