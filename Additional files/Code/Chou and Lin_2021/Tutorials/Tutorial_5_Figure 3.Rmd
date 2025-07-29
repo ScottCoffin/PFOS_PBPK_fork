@@ -1,0 +1,419 @@
+---
+title: 'Tutorial 5: Figure 3: Model evaluation'
+author: "Wei-Chun Chou"
+advisor: "Zhoumeng Lin"
+date: "June, 2020"
+fontsize: 12pt
+output:
+  html_document:
+    theme: cerulean 
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+## knitr::opts_knit$set(root.dir = "C:/Users/weichunc/Dropbox/PostDoc_KSU/Project/Project 1- PFOX PBPK/PART IV-Pregnacy PBPK mdoel/Manuscript/V2/Additional files/Results/PlotCode")
+knitr::opts_knit$set(root.dir = "C:/Users/weichunc/Dropbox/PostDoc_KSU/Project/Project 1- PFOX PBPK/PART IV-Pregnacy PBPK mdoel/Sumission_EHP/R2+Revision_EHP/Additional files/Results/PlotCode")
+```
+
+# Introduction
+This tutorial aims to guide you to step-by-step reproduce the results of Figure 3: Model evaluation results in rats. Comparisons of the model-predicted versus the observed PFOS levels in maternal plasma during (A) gestation (maternal dose was 0.1 mg/kg/day as an example) and (B) lactation (maternal dose was 0.4 mg/kg/day as an example) and (C) pup’s plasma in rats (maternal dose was 0.8 mg/kg/day as an example).
+
+
+# Prerequisites
+Before running your model, you should set up your working directory, compile the PBPK model, install all required packages and input needed datasets. The model file and datasets can be found in the additional files. 
+
+## Setting up your working directory
+The working directory has to be changed to the **PlotCode** folder. You can use two ways to change your working directory as follow:
+
+1. Use RStudio: use the menu to change your working directory under **Session > Set Working Directory > Choose Directory**. <br>
+2. Use R function: use the R function `setwd()` to change the path to your working directory.  
+
+## Loading required R package  
+The list of R packages should be installed prior to the simulation. If you have not installed these packages (listed below), please install these packages to your Rstudio using the R function `require (" ")` and then use `library` open it.
+
+```{r package, echo=TRUE, message=FALSE}
+##  Loading requried R packages
+library(mrgsolve)    ## R-package for Loading mrgsolve code 
+library(magrittr)    ## R-package for the pipe, %>% 
+library(dplyr)       ## R-package for transform and summarize tabular data with rows and columns; %>%
+library(tidyverse)   ## R-package for transform and summarize tabular data with rows and columns; %>%
+library(ggplot2)     ## R-package for GGplot
+library(FME)         ## R-package for model fitting
+library(minpack.lm)  ## R-package for model fitting
+library(gridExtra)   ## R-package for function "grid.arrange"
+```
+
+## Read mrgsolve-based PBPK Model R file
+The pre-pregnant, gestational and lactational PBPK model were written in `RMod.R` and `HMod.R` file. Before compiling the model, please conduct/call this file using R function `source`. 
+
+```{r Input}
+## Input mrgsolve-based PBPK Model
+source (file = "RMod.R")  ## input the rat model for nonpregnnat, geatation and lactation
+source (file = "HMod.R")  ## input the human model for nonpregnnat, geatation and lactation
+
+```
+
+## Complie mrgsolve-based PBPK Model
+Read the code and build these mrgsolve-based PBPK models. You should make sure all models are built correctly. 
+
+```{r}
+## Build mrgsolve-based PBPK Model
+PreGmod_R <- mcode ("PreG_RatPBPK.code", PreG_RatPBPK.code)
+Gmod_R    <- mcode ("GRatPBPK.code", GRatPBPK.code)
+Lmod_R    <- mcode ("LRatPBPK.code", LRatPBPK.code)
+PreGmod_H <- mcode ("PreGHumanPBPK.code", PreGHumanPBPK.code) 
+Gmod_H    <- mcode ("GHumanPBPK.code", GHumanPBPK.code)
+Lmod_H    <- mcode ("LHumanPBPK.code", LHumanPBPK.code)
+```
+
+## Loading datasets
+In this step, you need to input the .csv file to the Rstudio. The function `read.csv` can be used to read the csv files into R
+```{r}
+RDat <- read.csv(file = "Data_R.csv")
+HDat <- read.csv(file = "Data_H.csv")
+
+```
+
+## Loading Fit results from rds files to obtain final parameter values
+```{r}
+GFit_R <- readRDS(file = "GFit_R.rds")
+LFit_R <- readRDS(file = "LFit_R.rds")
+GFit_H <- readRDS(file = "GFit_H.rds")
+LFit_H <- readRDS(file = "LFit_H.rds")
+```
+
+## Input prediction function (i.e., an exposure scenario to run using the PBPK model)
+```{r}
+source (file = "Pred_Rat.R")
+source (file = "Pred_H.R")
+```
+
+# Input the rat datasets
+The rat datasets are from Luebker et al., 2005a,b:<br>
+
+Model evaluation data.<br>
+- Reference: Luebker et al., 2005a,b;<br> 
+- Dose regimen: 0.1, 0.4, 1.6, 3.2 mg/kg/day, exposure from 42 days prior to matting, through GD0 to GD20 or PND4. <br>
+- Abbreviation: D: Dam, P: Pup, MP: maternal plasma, NP: neonatal plasma
+
+```{r input data}
+# ==========================================================================
+# C1. : Pregnant SD rat oral dose to 0.1 mg/kg,  matrix: plasma
+# C2. : Pregnant SD rat oral dose to 0.4 mg/kg,  matrix: plasma
+# C3. : Pregnant SD rat oral dose to 1.6 mg/kg,  matrix: plasma
+# C4. : Pregnant SD rat oral dose to 3.2 mg/kg,  matrix: plasma        
+# ==========================================================================
+
+## Read the data and later used in model calibration and evaluation
+OBS.C1_MP <- RDat %>% filter(Study >2) %>% filter( Sample == "MP" & Dose == 0.1 )%>% select(Time = "Time", CPlas = "Conc", SD = "SD")
+OBS.C2_MP <- RDat %>% filter(Study >2) %>% filter( Sample == "MP" & Dose == 0.4) %>% select(Time = "Time", CPlas = "Conc", SD = "SD")
+OBS.C3_MP <- RDat %>% filter(Study >2) %>% filter( Sample == "MP" & Dose == 1.6) %>% select(Time = "Time", CPlas = "Conc", SD = "SD")
+OBS.C4_MP <- RDat %>% filter(Study >2) %>% filter( Sample == "MP" & Dose == 3.2) %>% select(Time = "Time", CPlas = "Conc", SD = "SD")
+OBS.C1_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 0.1) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+OBS.C2_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 0.4) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+OBS.C3_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 1.6) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+OBS.C4_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 3.2) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+OBS.C5_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 0.8) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+OBS.C6_PP <- RDat %>% filter(Study >2) %>% filter( Sample == "NP" & Dose == 2.0) %>% select(Time = "Time", CPlas_pup = "Conc", SD = "SD")
+
+```
+# Define prediction function
+The prediction function aims to produce the simulation of time-varying profiles of PFOS concentrations in maternal plasma, matneral liver, fetal/neonatal plasma and liver following the dose regimen of Luebker et al., 2005. 
+
+```{r prediction function}
+## Define the prediction function
+pred.C <- function(Gpars, Lpars, DOSE) {
+    
+PreG_BW    = 0.24 ## Female rat BW (premating); from Luebker et al., 2005b
+tinterval  = 24   ## Time interval; 
+PreG_TDOSE = 42 + 14 ## Total dosing/Dose times; Repeat oral dose from beginning 42 days prior to cohabitation; (14 days matting)
+PreG_DOSE  = DOSE  ## Repeat oral dose (mg/kg/day);  
+PreG_DOSEoral = PreG_DOSE*PreG_BW  ## Amount of oral dose
+    
+# To create an exposure scenario
+PreG_ex.oral <- ev (ID   = 1,             ## One individual
+                amt  = PreG_DOSEoral, ## Amount of dose 
+                ii   = tinterval,     ## Time interval
+                addl = PreG_TDOSE - 1,## Additional dosing 
+                cmt  = "AST",         ## The dosing compartment: AST Stomach  
+                tinf = 0.01,          ## Infusion time;  
+                replicate = FALSE)    ## No replicate
+
+PreG_tsamp       = tgrid(0, tinterval*(PreG_TDOSE - 1) + 24*1, 1) ## Simulation time from 6 weeks prior to mating and during mating (maximum of 14 days)
+    
+PreG_out <- PreGmod_R %>% 
+update(atol = 1E-6, maxsteps = 50000) %>%          
+mrgsim_d (data = PreG_ex.oral, tgrid = PreG_tsamp)
+    
+PreG_Init <- PreG_out %>% filter (time == (56*24)) %>% select(-c("Plasma", "Liver","Kidney"))
+    
+############### Gestational model
+## Get out of log domain
+Gpars <- exp(Gpars) ## Return a list of exp 
+    
+## Exposure scenario for gestational exposure
+GBW          = 0.36                   ## Body weight during gestation from Luebker et al., 2005b
+tinterval    = 24                     ## Time interval; 
+GTDOSE       = 22                     ## Total dosing/Dose times; Repeat oral dose from GD0 - GD21
+GDOSE        = DOSE                   ## Repeat oral dose 
+GDOSEoral    = GDOSE*GBW              ## Amount of oral dose
+    
+# To create a data set of 1 subject receiving DOSE every 24 hours 
+Gex.oral <- ev (ID   = 1,             ## One individual
+                amt  = GDOSEoral,     ## Amount of dose 
+                ii   = tinterval,     ## Time interval
+                addl = GTDOSE - 1,    ## Additional doseing 
+                cmt  = "AST",         ## The dosing compartment: AST Stomach  
+                tinf = 0.01,          ## Infusion time;  
+                replicate = FALSE)    ## No replicate
+    
+Gtsamp  = tgrid(0, tinterval*(GTDOSE - 1) + 24*0, 1) ## Exposure time from GD0 to GD 20 and plus 1 day without dosing
+    
+## Simulation 
+Gout <- 
+Gmod_R %>% ## Input the initial values from pre-pregnant model to the gestaitonal model 
+init(APlas_free = PreG_Init$APlas_free, APTC = PreG_Init$APTC, 
+     AFil = PreG_Init$AFil, AKb = PreG_Init$AKb, ARest = PreG_Init$ARest,
+     AL = PreG_Init$AL, AM = PreG_Init$AM, AF = PreG_Init$AF, 
+     A_baso = PreG_Init$A_baso, A_apical = PreG_Init$A_apical, 
+     Adif = PreG_Init$Adif, Aefflux = PreG_Init$Aefflux) %>%
+param (Gpars) %>%
+update(atol = 1E-6, maxsteps = 500000) %>%          
+mrgsim_d (data = Gex.oral, tgrid = Gtsamp)
+
+## The output of gestational model    
+Goutdf = cbind.data.frame(Time      = Gout$time, 
+                          CPlas     = Gout$Plasma,
+                          CL        = Gout$Liver,
+                          CPlas_pup = Gout$Plasma_Fet,
+                          CL_pup    = Gout$Liver_Fet) 
+    
+GInit <- Gout %>% filter (time == 21*24) 
+    
+############### Lactational model
+Lpars <- exp(Lpars) ## Return a list of exp (parametrs)
+
+## Exposure scenario for lactational exposure; through PND0 - PND22 (end of lactation)
+LBW          = 0.30                  ## Rat body weight during lactation 
+tinterval    = 24                    ## Time interval; 
+LTDOSE       = 23                    ## Total dosing/Dose times
+LDOSE        = DOSE                  ## Repeat oral dose of GDOSE mg/kg/day;  
+LDOSEoral    = LDOSE*LBW             ## Amount of oral dose
+    
+# To create a exposure scenario during lactation
+Lex.oral <- ev (ID   = 1,            ## One individual
+                amt  = LDOSEoral,    ## Amount of dose 
+                ii   = tinterval,    ## Time interval
+                addl = LTDOSE - 1,   ## Additional doseing 
+                cmt  = "AST",        ## The dosing compartment: AST Stomach  
+                tinf = 0.01,         ## Infusion time;  
+                replicate = FALSE)   ## No replicate
+
+## Simulation time     
+Ltsamp       = tgrid(0, tinterval*(LTDOSE - 1) + 24*2, 1) 
+    
+
+Lout <- Lmod_R %>% 
+init(APlas_free = GInit$APlas_free, APTC = GInit$APTC, AFil = GInit$AFil, 
+     AKb = GInit$AKb, ARest = GInit$ARest, AL = GInit$AL, AM = GInit$AM, 
+     AF = GInit$AF, A_baso = GInit$A_baso, A_apical = GInit$A_apical, 
+     Adif = GInit$Adif, Aefflux = GInit$Aefflux, 
+     APlas_free_pup = GInit$APlas_Fet_free, ARest_pup = GInit$ARest_Fet,
+     AL_pup  = GInit$AL_Fet) %>%
+param (Lpars) %>%
+update(atol = 1E-6, maxsteps = 500000) %>%          
+mrgsim_d (data = Lex.oral, tgrid = Ltsamp)
+
+## The output of lactaitonal model    
+Loutdf = cbind.data.frame(Time      = Lout$time, 
+                          CPlas     = Lout$Plasma, 
+                          CL        = Lout$Liver, 
+                          CPlas_pup = Lout$Plasma_pup,
+                          CL_pup    = Lout$Liver_pup)
+
+return (list(Goutdf = Goutdf, Loutdf = Loutdf))
+}
+```
+
+# Create the dataset for plotting
+Several datasets are created and then later used in plot.
+
+- **out_0.1_G/L**: The simulation of PFOS in materal and fetal/neonatal palsma and tissues following daily dose of 0.1 mg/kg during gestaiton or lactation. 
+- **out_0.4_G/L**: The simulation of PFOS in materal and fetal/neonatal palsma and tissues following daily dose of 0.4 mg/kg during gestaiton or lactation.
+- **out_0.8_G/L**: The simulation of PFOS in materal and fetal/neonatal palsma and tissues following daily dose of 0.8 mg/kg during gestaiton or lactation.
+- **out_1.6_G/L**: The simulation of PFOS in materal and fetal/neonatal palsma and tissues following daily dose of 1.6 mg/kg during gestaiton or lactation.
+- **out_2.0_G/L**: The simulation of PFOS in materal and fetal/neonatal palsma and tissues following daily dose of 2.0 mg/kg during gestaiton or lactation.
+- **obs_0.1/0.4/1.6/3.2**: Observed data following daily dose of 0.1/0.4/1.6/3.2 during gestation and lactation.
+
+```{r Create dataset}
+
+## Simulation data during gestaion and lactation for dosing 0.1 mg/kg/day
+out_0.1_G <- pred.C(GFit_R$par, LFit_R$par, 0.1)[[1]] %>% mutate(Dose_group = 0.1, Stage = "G", GD = Time/24)%>% filter(Time > 0)
+out_0.1_L <- pred.C(GFit_R$par, LFit_R$par, 0.1)[[2]] %>% mutate(Dose_group = 0.1, Stage = "L", GD = Time/24)%>% filter(Time > 0)
+out_0.1   <- rbind.data.frame (out_0.1_G, out_0.1_L)
+
+## Simulation data during gestaion and lactation for dosing 0.4 mg/kg/day
+out_0.4_G <- pred.C(GFit_R$par, LFit_R$par, 0.4)[[1]] %>% mutate(Dose_group = 0.4, Stage = "G", GD = Time/24)%>% filter(Time > 0)
+out_0.4_L <- pred.C(GFit_R$par, LFit_R$par, 0.4)[[2]] %>% mutate(Dose_group = 0.4, Stage = "L", GD = Time/24)%>% filter(Time > 0)
+out_0.4   <- rbind.data.frame (out_0.4_G, out_0.4_L)
+
+## Simulation data during gestaion and lactation for dosing 0.8 mg/kg/day
+out_0.8_G <- pred.C(GFit_R$par, LFit_R$par, 0.8)[[1]] %>% mutate(Dose_group = 0.8, Stage = "G", GD = Time/24)%>% filter(Time > 0)
+out_0.8_L <- pred.C(GFit_R$par, LFit_R$par, 0.8)[[2]] %>% mutate(Dose_group = 0.8, Stage = "L", GD = Time/24)%>% filter(Time > 0)
+out_0.8   <- rbind.data.frame (out_0.8_G, out_0.8_L)
+
+## Simulation data during gestaion and lactation for dosing 1.6 mg/kg/day
+out_1.6_G <- pred.C(GFit_R$par, LFit_R$par, 1.6)[[1]] %>% mutate(Dose_group = 1.6, Stage = "G", GD = Time/24)%>% filter(Time > 0)
+out_1.6_L <- pred.C(GFit_R$par, LFit_R$par, 1.6)[[2]] %>% mutate(Dose_group = 1.6, Stage = "L", GD = Time/24)%>% filter(Time > 0)
+out_1.6   <- rbind.data.frame (out_1.6_G, out_1.6_L)
+
+## Simulation data during gestaion and lactation for dosing 2 mg/kg/day
+out_2.0_G <- pred.C(GFit_R$par, LFit_R$par, 2)[[1]] %>% mutate(Dose_group = 2, Stage = "G", GD = Time/24)%>% filter(Time > 0)
+out_2.0_L <- pred.C(GFit_R$par, LFit_R$par, 2)[[2]] %>% mutate(Dose_group = 2, Stage = "L", GD = Time/24)%>% filter(Time > 0)
+out_2.0   <- rbind.data.frame (out_2.0_G, out_2.0_L)
+
+
+### Input the experimental data for maternal plasma
+## Observed data for dosing 0.1 mg/kg/day
+obs_0.1   <- OBS.C1_MP %>% mutate(Dose_group = 0.1, Stage = if_else (Time <= 504, true = "G", false = "L")) %>% 
+mutate(GD = if_else (Stage == "L", true = Time/24 - 22, false = Time/24))
+
+## Observed data for dosing 0.4 mg/kg/day
+obs_0.4   <- OBS.C2_MP %>% mutate(Dose_group = 0.4, Stage = if_else (Time <= 504, true = "G", false = "L")) %>% 
+mutate(GD = if_else (Stage == "L", true = Time/24 - 22, false = Time/24))
+
+## Observed data for dosing 1.6 mg/kg/day
+obs_1.6   <- OBS.C3_MP %>% mutate(Dose_group = 1.6, Stage = if_else (Time <= 504, true = "G", false = "L")) %>% 
+mutate(GD = if_else (Stage == "L", true = Time/24 - 22, false = Time/24))
+
+## Observed data for dosing 3.2 mg/kg/day
+obs_3.2   <- OBS.C4_MP %>% mutate(Dose_group = 3.2, Stage = if_else (Time <= 504, true = "G", false = "L")) %>% 
+mutate(GD = if_else (Stage == "L", true = Time/24 - 22, false = Time/24))
+
+### Input the experimental data for fetal plasma
+obs_0.1_pp <- OBS.C1_PP %>% mutate (Dose_group = 0.1, GD = Time/24) 
+obs_0.4_pp <- OBS.C2_PP %>% mutate (Dose_group = 0.4, GD = Time/24) 
+obs_0.8_pp <- OBS.C5_PP %>% mutate (Dose_group = 0.8, GD = Time/24) 
+obs_1.6_pp <- OBS.C3_PP %>% mutate (Dose_group = 1.6, GD = Time/24) 
+obs_2.0_pp <- OBS.C6_PP %>% mutate (Dose_group = 2.0, GD = Time/24) 
+obs_3.2_pp <- OBS.C4_PP %>% mutate (Dose_group = 3.2, GD = Time/24) 
+
+## Combine all data from different dose groups
+obs_pp     <- rbind.data.frame(obs_0.1_pp, obs_0.4_pp, 
+                               obs_0.8_pp, obs_1.6_pp,
+                               obs_2.0_pp, obs_3.2_pp)
+
+```
+
+# Create the figures using ggplot2 code 
+```{r plot, warning=FALSE, fig.align = "center"}
+
+## Add the font to font database
+windowsFonts("Times" = windowsFont("Times New Roman"))
+
+## Define the plot theme
+PlotTheme <- theme (
+  plot.background         = element_rect (fill="White"),
+  text                    = element_text (family = "Times"), 
+  panel.border            = element_rect (colour = "black", 
+                                          fill = NA, size =   2),
+  panel.background        = element_rect (fill="White"),
+  panel.grid.major        = element_blank(),
+  panel.grid.minor        = element_blank(), 
+  axis.text.x             = element_text (size   = 12, 
+                                          colour = "black", face = "bold"),
+  axis.text.y             = element_text (size   = 12, 
+                                          colour = "black", face = "bold"),
+  axis.title              = element_blank(),   
+  strip.background        = element_blank(), 
+  strip.text              = element_blank(),
+  legend.position='none') 
+
+###### Plot
+
+p1 <- 
+ggplot(data = out_0.1_G , aes(x = GD, y = CPlas)) + 
+geom_line    (aes(colour = Stage), size = 1.2) + 
+geom_point   (data   = obs_0.1 %>%filter(Stage == "G"), 
+              aes (x = GD, y = CPlas), colour = "steelblue4", size = 2)+  
+geom_errorbar(data = obs_0.1 %>%filter(Stage == "G"), 
+              aes(x = GD, ymin = CPlas-SD, ymax = CPlas+SD), 
+              colour = "steelblue4", width=.2,
+              position=position_dodge(0.05)) +
+              scale_x_continuous( expand = c (0, 0), limits = c(-1, 22)) +
+              scale_y_continuous(limits = c(0, 20)) 
+
+
+p2 <- 
+ggplot(data = out_0.4_L , aes(x = GD, y = CPlas)) + 
+geom_line  (colour = "steelblue3", size = 1.2) + 
+geom_point (data = obs_0.4%>%filter(Stage == "L"), 
+            aes (x = GD, y = CPlas), colour = "steelblue4", size = 2)+  
+geom_errorbar(data = obs_0.4%>%filter(Stage == "L"), 
+              aes(x = GD, ymin = CPlas-SD, ymax = CPlas+SD), 
+              colour = "steelblue4", width=.2,
+              position=position_dodge(0.05)) +
+              scale_x_continuous(expand = c (0,0), limits = c(0, 22)) + 
+              scale_y_continuous(limits = c(5, 50)) 
+
+
+p3 <- 
+ggplot(data = out_0.8_L , aes(x = GD, y = CPlas_pup)) + 
+geom_line (colour = "grey", size = 1.2) + 
+geom_point (data = obs_0.8_pp %>%filter(Time>504), 
+            aes (x = GD-22, y = CPlas_pup), 
+            colour = "steelblue4", size = 2) + 
+geom_errorbar(data = obs_0.8_pp%>%filter(Time>504), 
+            aes(x = GD-22, ymin = CPlas_pup-SD, ymax = CPlas_pup+SD), 
+            colour = "steelblue4", width=.2,
+            position=position_dodge(0.05)) +
+            scale_x_continuous(expand = c (0,0), limits = c(0, 22)) +
+            scale_y_continuous(limits = c(0, 150)) 
+
+###############
+p1 <- p1 + PlotTheme
+p2 <- p2 + PlotTheme
+p3 <- p3 + PlotTheme
+
+p1 # Fig 3A : Comparisons of the model-predicted versus the observed PFOS levels in maternal plasma during gestation (maternal dose was 0.1 mg/kg/day as an example)  
+
+p2 # Fig 3B : Comparisons of the model-predicted versus the observed PFOS levels in maternal plasma during lactation (maternal dose was 0.4 mg/kg/day as an example)
+
+p3 # Fig 3C : Comparisons of the model-predicted versus the observed PFOS levels in pup’s plasma in rats (maternal dose was 0.8 mg/kg/d as an example).
+```
+
+# Save the figure
+Save your figures using `ggsave()`. In the `ggsave` function, you should set up the your path to save your figure in the local drive.  
+
+```{r save figure}
+
+# ggsave("Fig.3a.tiff",scale = 1,
+#        plot = p1,
+#        path = "C:/Users/weichunc/Desktop",
+#        width = 9, height = 8, units = "cm", dpi=320)
+# 
+# ggsave("Fig.3b.tiff",scale = 1,
+#        plot = p2,
+#        path = "C:/Users/weichunc/Desktop",
+#        width = 9, height = 8, units = "cm", dpi=320)
+# 
+# ggsave("Fig.3c.tiff",scale = 1,
+#        plot = p3,
+#        path = "C:/Users/weichunc/Desktop",
+#        width = 9, height = 8, units = "cm", dpi=320)
+
+
+```
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,314 @@
+---
+title: 'Tutorial 6: Figure 4: human model simulation'
+author: "Wei-Chun Chou"
+advisor: "Zhoumeng Lin"
+date: "June, 2020"
+fontsize: 12pt
+output:
+  html_document:
+    theme: cerulean 
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+## knitr::opts_knit$set(root.dir = "C:/Users/weichunc/Dropbox/PostDoc_KSU/Project/Project 1- PFOX PBPK/PART IV-Pregnacy PBPK mdoel/Manuscript/V2/Additional files/Results/PlotCode")
+knitr::opts_knit$set(root.dir = "C:/Users/weichunc/Dropbox/PostDoc_KSU/Project/Project 1- PFOX PBPK/PART IV-Pregnacy PBPK mdoel/Sumission_EHP/R2+Revision_EHP/Additional files/Results/PlotCode")
+```
+
+# Introduction
+The tutorial aims to guide you to step-by-step reproduce the results of Figure 4: Model evaluation results in humans. Comparisons of the model-predicted versus the observed PFOS levels in maternal plasma, cord blood, neonatal plasma and milk during gestation and lactation in humans (maternal dose was 0.19 ng/kg/day for these simulations based on Loccisano et al. 2013).
+
+# Prerequisites
+Before running your model, you should set up your working directory, compile the PBPK model, install all required packages and input needed datasets. The model file and datasets can be found in the additional files. 
+
+## Setting up your working directory
+The working directory has to be changed to the **PlotCode** folder. You can use two ways to change your working directory as follow:
+
+1. Use RStudio: use the menu to change your working directory under **Session > Set Working Directory > Choose Directory**. <br>
+2. Use R function: use the R function `setwd()` to change the path to your working directory.  
+
+## Loading required R packages  
+The list of R packages should be installed prior to the simulation. If you have not installed these packages (listed below), please install these packages to your Rstudio using the R function `require (" ")` and then use `library` open it.
+
+```{r package, echo=TRUE, message=FALSE}
+##  Loading requried R packages
+library(mrgsolve)    ## R-package for Loading mrgsolve code 
+library(magrittr)    ## R-package for the pipe, %>% 
+library(dplyr)       ## R-package for transform and summarize tabular data
+library(tidyverse)   ## R-package for transform and summarize tabular data
+library(ggplot2)     ## R-package for GGplot
+library(FME)         ## R-package for model fitting
+library(minpack.lm)  ## R-package for model fitting
+library(gridExtra)   ## R-package for function "grid.arrange"
+```
+
+## Read mrgsolve-based PBPK Model R file
+The pre-pregnant, gestational and lactational PBPK model in humans were written in `HMod.R` file. Before compiling the model, please conduct/call this file using R function `source`. 
+
+```{r Input}
+## Input mrgsolve-based PBPK Model
+source (file = "HMod.R")  ## input the human model for nonpregnnat, geatation and lactation
+
+```
+
+## Compile mrgsolve-based PBPK Model
+Read the code and build these mrgsolve-based PBPK models. You should make sure all models are built correctly. 
+
+```{r}
+## Build mrgsolve-based PBPK Model
+PreGmod_H <- mcode ("PreGHumanPBPK.code", PreGHumanPBPK.code) 
+Gmod_H    <- mcode ("GHumanPBPK.code", GHumanPBPK.code)
+Lmod_H    <- mcode ("LHumanPBPK.code", LHumanPBPK.code)
+```
+
+## Loading datasets
+In this step, you need to input the .csv file to the Rstudio. The function `read.csv` can be used to read the csv files into R
+
+```{r}
+HDat <- read.csv(file = "Data_H.csv")
+
+```
+
+## Loading Fit results from rds files to obtain final parameter values
+```{r}
+GFit_H <- readRDS(file = "GFit_H.rds")
+LFit_H <- readRDS(file = "LFit_H.rds")
+```
+
+## Input prediction function (one prediction function represents one exposure scenario to be run using the PBPK model)
+```{r}
+source (file = "Pred_H.R")
+```
+
+
+# Define the prediction function
+The prediction functions are defined here to predict the time-varying profiles of PFOS in maternal plasma, fetal/neonatal plasma and milk during gestation and lactation. 
+
+- PBPK_H_G: Prediction function for the simulation of gestational model.
+- PBPK_H_L: Prediction function for the simulation of lactational model.
+
+```{r}
+## Define the prediction function from pre-pregnant to gestational exposure
+PBPK_H_G <- function(pars, DOSE, pred = FALSE) {
+  
+  ## Extract the PFOS concentration in all tissues in non-pregnant women
+  Init <- Pred.preG (DOSE) %>% filter (row_number()== n()) %>%
+  select(-c("Plasma", "Liver", "Kidney"))
+  
+  ## Get out of log domain
+  Gpars_H <- lapply(pars, exp)  ## Return a list of exp (parametrs) 
+  
+  ## Exposure scenario for gestational exposure
+  GBW          = 67                     ## Body weight during gestation 
+  tinterval    = 24                     ## Time interval; 
+  GTDOSE       = 7*41                   ## Total dosing/Dose times;
+  GDOSE        = DOSE                   ## Input oral dose  
+  GDOSEoral    = GDOSE*GBW              ## Amount of oral dose
+  
+  # To create a data set of 1 subject receiving DOSE every 24 hours 
+  Gex.oral <- ev (ID   = 1,             ## One individual
+                  time = 0,             ## Dosing start time (GA0)
+                  amt  = GDOSEoral,     ## Amount of dose 
+                  ii   = tinterval,     ## Time interval
+                  addl = GTDOSE - 1,    ## Additional dosing 
+                  cmt  = "AST", ## The dosing compartment: AST 
+                  replicate = FALSE)    ## No replicate
+  
+  ## Simulation time from GA0 to GA 41 (weeks) + 1 day (simulate 41 weeks, but obtain data at GA40 below)
+  Gtsamp  = tgrid(0, tinterval*(GTDOSE - 1) + 24*1, 24) 
+  
+  ## Simulation of exposure scenario 
+  Gout <- 
+    Gmod_H %>% ## Gestational PBPK model
+    init(APlas_free = Init$APlas_free, ## Input the initial concentrations
+         APTC = Init$APTC, 
+         AFil = Init$AFil, AKb = Init$AKb, ARest = Init$ARest,
+         AL = Init$AL, AM = Init$AM, AF = Init$AF, 
+         A_baso = Init$A_baso, 
+         A_apical = Init$A_apical, Adif = Init$Adif,
+         Aefflux = Init$Aefflux) %>%  
+    param (Gpars_H) %>% ## Update the parameter list with Gpars
+    update(atol = 1E-6,  maxsteps = 500000) %>%  ## Atol: Absolute tolerance parameter; maxsteps:maximum number of steps          
+    mrgsim_d (data = Gex.oral, tgrid = Gtsamp)   
+  
+## Extract the "Time", "CPlas", "CL" , "CPlas_P", "CPla" and "Curine" from Gout
+Goutdf = cbind.data.frame(Time = Gout$time/(24*7),   
+           CPlas    = Gout$Plasma*1000, 
+           CL       = Gout$Liver*1000,    
+           CPlas_pup  = Gout$CordB*1000,  
+           CPla     = Gout$Placenta*1000) 
+  
+if (pred) return (Goutdf) # if pred = TRUE, output the Goutdf 
+  
+Init_G <- 
+Gout %>% filter (time == 40*24*7) ## Extract the concentration at GA40
+return (Init_G)
+}   
+
+
+## Define the prediction function for lactation period
+PBPK_H_L <- function(Gpars_H, Lpars_H, DOSE) {
+  
+## Extract the initial concentration from gestational model
+Init_G <- PBPK_H_G (Gpars_H, DOSE)    
+  
+## Get out of log domain
+Lpars_H <- exp(Lpars_H) ## Return a list of exp (parametrs) 
+  
+## Exposure scenario for lactational exposure; through postnatal weeks (PNW)0 - PNW41 
+  LBW          = 67 ## human body weight before lactation
+  tinterval    = 24 ## Time interval; 
+  LTDOSE       = 41*7 ## Total dosing/Dose times; 
+  LDOSE        = DOSE   ## Repeat oral dose  (mg/kg/day);  
+  LDOSEoral    = LDOSE*LBW  ## Amount of oral dose (mg)
+  
+  
+## To create a data set of 1 subject receiving DOSE every 24 hours
+  Lex.oral <- ev (ID   = 1,             ## One individual
+                  amt  = LDOSEoral,     ## Amount of dose 
+                  ii   = tinterval,     ## Time interval
+                  addl = LTDOSE - 1,    ## Additional dosing 
+                  cmt  = "AST", ## The compartment: AST Stomach  
+                  replicate = FALSE)    ## No replicate
+  
+  ## Simulation time from PNW0 to PNW41 plus 7 days without dosing
+  Ltsamp       = tgrid(0, tinterval*(LTDOSE - 1) + 24*7, 24) 
+  
+  
+  Lout <- Lmod_H %>% # Lactational model
+  init(APlas_free =  Init_G$APlas_free, # Input the initial concentration
+       APTC =  Init_G$APTC, 
+       AFil =  Init_G$AFil, AKb =     Init_G$AKb, 
+       ARest =  Init_G$ARest, AL =  Init_G$AL, 
+       AM =  Init_G$AM, AF =  Init_G$AF, 
+       A_baso =  Init_G$A_baso, A_apical = Init_G$A_apical, 
+       Adif =  Init_G$Adif,
+       Aefflux =  Init_G$Aefflux, 
+       APlas_free_neo =  Init_G$APlas_Fet_free, 
+       AL_neo =  Init_G$AL_Fet, ARest_neo =  Init_G$ARest_Fet) %>% 
+    param (Lpars_H) %>% # Update the parameter list with pars
+    update(atol = 1E-6, maxsteps = 500000) %>%         
+    mrgsim_d (data = Lex.oral, tgrid = Ltsamp) 
+  
+  ## Extract the concentration; convert the unit from mg/l to ng/ml
+  Loutdf = cbind.data.frame(
+           Time       = (Lout$time/(24*7)) + 40, 
+           CPlas      = Lout$Plasma*1000,  
+           CPlas_pup  = Lout$CPneo*1000,   
+           CMilk      = Lout$Milk*1000)    
+  
+  Loutdf  <- rbind.data.frame (Loutdf)
+  return (Loutdf)
+  
+}
+```
+
+# Save the data for plotting 
+```{r}
+## Adopt the optimized parameters from "GFit_H" and "LFit_H"
+bestpar_G <- GFit_H$par
+bestpar_L <- LFit_H$par
+
+## Simulation of time-vayring profiles in maternal plasma, neonatal plasma and milk
+Gout <- PBPK_H_G (bestpar_G, DOSE = 1.9E-7, pred = TRUE)
+Lout <- PBPK_H_L (bestpar_L, bestpar_L, DOSE = 1.9E-7)
+
+## Select the maternal (CPlas) and fetal/neonatal plasma (CPlas_pup) 
+Goutdf <- Gout%>%select(Time = Time, CPlas = CPlas, CPlas_pup = CPlas_pup)
+Loutdf <- Lout%>%select(Time = Time, CPlas = CPlas, CPlas_pup = CPlas_pup)
+LMilk  <- Lout%>%select(Time = Time, CMilk = CMilk) # milk profiles
+
+## Make the plot data by combining gestational and lactational simulation 
+GL <- rbind (Goutdf, Loutdf) %>% distinct (Time, .keep_all = TRUE)
+
+## Show the data
+head(GL)
+```
+
+# Create the figures using ggplot2 code 
+The figures represent the comparisons of the model-predicted versus the observed PFOS levels in maternal plasma, cord blood, neonatal plasma and milk during gestation and lactation in humans.
+
+- p1: The figure shows the time-vayring profiles of PFOS in maternal plasma, fetal plasma and neonatal plasma through gestation to lactation.
+- pmilk: The figure shows the time-vayring profiles of PFOS in maternal milk during lactation.
+
+```{r warning=FALSE, fig.align = "center"}
+
+##===================================================================
+p1 <- ggplot() + 
+  geom_line (
+      data = GL, aes(x = Time, y = CPlas_pup), 
+      colour = "red", lwd = 2, linetype = 1) + 
+  geom_line (data = GL, aes(x = Time, y = CPlas), 
+               colour = "#00AFBB", lwd = 2) +
+  scale_x_continuous(breaks = seq(1, 71, 20), 
+                       limits = c(1, 71), expand=c(0,0)) + 
+  scale_y_continuous(expand=c(0,0),limits = c(-1, 3))  
+
+## Plot + theme
+p1 <- p1 + 
+  theme (
+    plot.background         = element_rect (fill="White"),
+    text                    = element_text (family = "Times"),   
+    panel.border            = element_rect (colour = "black",
+                                            fill=NA, size = 2),
+    panel.background        = element_rect (fill="White"),
+    panel.grid.major        = element_blank(),
+    panel.grid.minor        = element_blank(), 
+    axis.text               = element_text (size   = 12, 
+                                            colour = "black", 
+                                            face = "bold"),    
+    axis.title              = element_blank(),   
+    legend.position='none')   
+
+p1 #Fig. 4a: Time-varying profiles of PFOS concentrations in maternal and fetal/neonatal plasma druing gestation/lactation
+
+##========================================================================
+pmilk <- ggplot() + 
+  geom_line (data = LMilk, aes(x = (Time-40), y = CMilk), colour = "orange", lwd = 2, linetype = 1) + 
+  scale_x_continuous(breaks = seq(1, 25, 4), limits = c(1, 25), expand=c(0,0)) + 
+  scale_y_continuous(expand=c(0,0),limits = c(0, 0.05))  
+
+pmilk <- pmilk + 
+  theme (
+    plot.background         = element_rect (fill="White"),
+    text                    = element_text (family = "Times"),   # text front (Time new roman)
+    panel.border            = element_rect (colour = "black", fill=NA, size=2),
+    panel.background        = element_rect (fill="White"),
+    panel.grid.major        = element_blank(),
+    panel.grid.minor        = element_blank(), 
+    axis.text               = element_text (size   = 12, 
+                                            colour = "black", 
+                                            face = "bold"),  
+    axis.title              = element_blank(),   
+    legend.position='none')   
+
+pmilk ## Fig. 4b: Time-varying profiles of PFOS concentrations in milk druing lactation
+```
+
+# Save the figure
+Save your figures using `ggsave()`. In the `ggsave` function, you should set up the your path to save your figure in the local drive.  
+
+```{r save figure}
+
+# ggsave("Fig.4a.tiff",scale = 1,
+#        plot = p1,
+#        path = "C:/Users/weichunc/Desktop",
+#        width = 14, height = 9, units = "cm", dpi=320)
+# 
+# ggsave("Fig.4b.tiff",scale = 1,
+#        plot = pmilk,
+#        path = "C:/Users/weichunc/Desktop",
+#        width = 14, height = 9, units = "cm", dpi=320)
+# 
+
+```
+
+
+
+
+
+

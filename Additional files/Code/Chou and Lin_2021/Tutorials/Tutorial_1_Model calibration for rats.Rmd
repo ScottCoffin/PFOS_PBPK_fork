@@ -1,0 +1,558 @@
+---
+title: "Tutorial_1_Model calibration for rats"
+author: "Wei-Chun Chou"
+advisor: "Zhoumeng Lin"
+date: "June, 2020"
+fontsize: 12pt
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#knitr::opts_knit$set(root.dir = "C:/Users/weichunc/Dropbox/PostDoc_KSU/Project/Project 1- PFOX PBPK/PART IV-Pregnacy PBPK mdoel/Sumission_EHP/R3 + Revision_EHP/R3_V2/Supplemental Zipped file/Results/PlotCode")
+knitr::opts_chunk$set(fig.width = 13, fig.height = 10) 
+```
+
+# Introduction
+This document gives you a simple tutorial to run the model calibration for the rat gestational and lactational PBPK model.  
+
+# Prerequisites
+Before running your model, you should set up your working directory, compile the PBPK model, install all required packages and input needed datasets. The model file and datasets can be found in the additional files. 
+
+## Setting up your working directory
+Before running, you should change your working directory to the **ModFit** folder. You can used two way to change your working directory as follow:
+
+1. Use RStudio: use the menu to change your working directory under **Session > Set Working Directory > Choose Directory**. <br>
+2. Use R function: use the R function `setwd()` to change the path to your working directory.  
+
+## Loading required R package  
+The list of R packages should be installed first prior to the simulation. If you have not installed these packages (listed below), please install these packages to your Rstudio using the R function `require (" ")` and then use `library` to open it.
+
+```{r echo=TRUE, message=FALSE}
+library(mrgsolve)    ## R-package for Loading mrgsolve code   
+library(magrittr)    ## R-package for the pipe, %>% ,  
+library(dplyr)       ## R-package for transform and summarize tabular data with rows and columns; %>% 
+library(tidyverse)   ## R-package for transform and summarize tabular data with rows and columns; %>% 
+library(ggplot2)     ## R-package for GGplot  
+library(FME)         ## R-package for model fitting  
+library(minpack.lm)  ## R-package for model fitting 
+```
+
+## Read mrgsolve-based PBPK Model R file
+The rat pre-pregnant, gestational and lactational PBPK model were written in `RMod.R` file. Before compiling the model, please call this file using R function `source`. 
+```{r}
+getwd()
+source(file = "Additional files/Code/Chou and Lin_2021/ModFit/Rat/RMod.R") ## input the rat gestational model
+```
+
+## Build mrgsolve-based PBPK Model
+Read the code and build these mrgsolve-based PBPK models. You should make sure all models are built correctly. 
+```{r}
+PreGmod_R <- mcode ("PreG_RatPBPK.code", PreG_RatPBPK.code) # bulid the pre-pregnant model
+Gmod_R <- mcode ("GRatPBPK.code", GRatPBPK.code) # bulid the gestational model
+Lmod_R <- mcode ("LRatPBPK.code", LRatPBPK.code) # bulid the lactational model
+```
+
+## Loading datasets for model calibration
+In this step, you need to input the .csv file to the Rstudio. The function `read.csv` can be used to read the csv file into R
+```{r}
+Data_0 <- read.csv(file = "Additional files/Code/Chou and Lin_2021/Results/Data_R.csv")
+```
+
+# Model calibration for the gestational PBPK model
+## Read these datasets and later used in model calibration
+The data collected from Thibodeaux et al., 2003; doi: https://doi.org/10.1093/toxsci/kfg121    
+Study design:
+
+- Dose regimen: 1, 2, 3, 5, 10 mg/kg/day.<br>
+- Exposure duration: GD2 - GD20.<br>
+- Abreviation: maternal plasma (MP), maternal liver (ML), fetal liver (FL).
+
+```{r}
+## The datasets were filtered based on Study, Dose, Time 
+## and selected by the column of "Time" and "Conc".
+OBS.A1  <- Data_0 %>% filter(Study == 1 & Sample == "MP" & Dose == 1 & Time != 0) %>% select(Time = "Time", CPlas = "Conc")
+OBS.A2  <- Data_0 %>% filter(Study == 1 & Sample == "MP" & Dose == 2 & Time != 0) %>% select(Time = "Time", CPlas = "Conc")
+OBS.A3  <- Data_0 %>% filter(Study == 1 & Sample == "MP" & Dose == 3 & Time != 0) %>% select(Time = "Time", CPlas = "Conc")
+OBS.A4  <- Data_0 %>% filter(Study == 1 & Sample == "MP" & Dose == 5 & Time != 0) %>% select(Time = "Time", CPlas = "Conc")
+OBS.A5  <- Data_0 %>% filter(Study == 1 & Sample == "MP" & Dose == 10& Time != 0) %>% select(Time = "Time", CPlas = "Conc")
+OBS.A6  <- Data_0 %>% filter(Study == 1 & Sample == "ML" & Dose == 1 & Time != 0) %>% select(Time = "Time", CL    = "Conc")
+OBS.A7  <- Data_0 %>% filter(Study == 1 & Sample == "ML" & Dose == 2 & Time != 0) %>% select(Time = "Time", CL    = "Conc")
+OBS.A8  <- Data_0 %>% filter(Study == 1 & Sample == "ML" & Dose == 3 & Time != 0) %>% select(Time = "Time", CL    = "Conc")
+OBS.A9  <- Data_0 %>% filter(Study == 1 & Sample == "ML" & Dose == 5 & Time != 0) %>% select(Time = "Time", CL    = "Conc")
+OBS.A10 <- Data_0 %>% filter(Study == 1 & Sample == "ML" & Dose == 10 & Time!= 0) %>% select(Time = "Time", CL    = "Conc")
+OBS.A11 <- Data_0 %>% filter(Study == 1 & Sample == "FL" & Dose == 1 & Time != 0) %>% select(Time = "Time", CFL   = "Conc")
+OBS.A12 <- Data_0 %>% filter(Study == 1 & Sample == "FL" & Dose == 2 & Time != 0) %>% select(Time = "Time", CFL   = "Conc")
+OBS.A13 <- Data_0 %>% filter(Study == 1 & Sample == "FL" & Dose == 3 & Time != 0) %>% select(Time = "Time", CFL   = "Conc")
+OBS.A14 <- Data_0 %>% filter(Study == 1 & Sample == "FL" & Dose == 5 & Time != 0) %>% select(Time = "Time", CFL   = "Conc")
+OBS.A15 <- Data_0 %>% filter(Study == 1 & Sample == "FL" & Dose == 10 & Time != 0)%>% select(Time = "Time", CFL   = "Conc")
+```
+
+## Define the prediction function for the gestational model calibration
+Here, we define a prediction function to simulate the time-varying profiles of PFOS based on the study design of Thibodeaux et al., 2003. You can obtain the predicted values of maternal plasma (MP) and liver (ML), and fetal liver (FL) by running this prediction function.
+
+```{r}
+## Define the prediction function based on the study design of the literature of Thibodeaux et al., 2003
+## Exposure scenario: Dosing druing pregnnacy from GD2 - GD20
+pred.A <- function(Gpars, DOSE) { ## Gpars: input parameters, Dose: input dose, 
+    
+    ## Get out of log domain
+    Gpars <- exp(Gpars)                   ## Return a list of exp from log scale
+    
+    ## Exposure scenario for gestational exposure
+    GBW          = 0.225                  ## Default value: 0.225-0.307 kg; Loccisano et al. (2012); 
+    tinterval    = 24                     ## Time interval; 
+    GTDOSE       = 20                     ## Total dosing/Dose times; 
+    GDOSE        = DOSE                   ## Input oral dose  
+    GDOSEoral    = GDOSE*GBW              ## Amount of oral dose
+    
+    ## To create a data set of 1 subject receiving DOSEoral every 24 hours
+    Gex.oral <- ev (ID   = 1,             ## One individual
+                    time = 24*2,          ## Dosing starts at GD2
+                    amt  = GDOSEoral,     ## Amount of dose 
+                    ii   = tinterval,     ## Time interval
+                    addl = GTDOSE - 1,    ## Addtional dosing 
+                    cmt  = "AST",         ## The dosing comaprtment: AST Stomach  
+                    tinf = 0.01,          ## Infusion time;  
+                    replicate = FALSE)    ## No replicate
+    
+    Gtsamp  = tgrid(0, tinterval*(GTDOSE - 1) + 24*2, 1) ## set up the output time; dtout = 1 hours 
+    
+    ## Simulation of exposure scenaior 
+    Gout <- 
+    Gmod_R %>% ## Gestational PBPK model
+    param (Gpars) %>% ## Update the parameter list with Gpars
+    update(atol = 1E-6, maxsteps = 500000) %>%  ## Atol:tolerance parameter; maxsteps:maximum steps
+    mrgsim_d (data = Gex.oral, tgrid = Gtsamp)   
+    
+    ## Extract the "Time", "CPlas", "CL" and "CFL" from Gout; 
+    Goutdf = cbind.data.frame(Time   = Gout$time,      # Time : output time (hours)
+                              CPlas  = Gout$Plasma,    # CPlas: PFOS concentration in maternal plasma
+                              CL     = Gout$Liver,     # CL: PFOS concentration in maternal liver
+                              CFL    = Gout$Liver_Fet) # CFL: PFOS concentration in fetal liver
+    
+    Goutdf <- Goutdf %>% filter (Time > 0)  # filter the value at time = 0
+    return (Goutdf) # Return Goutdf
+}
+```
+
+## Create a cost function for gestational model calibration 
+Define a cost function `Gcost` to estimate the model residual. <br>
+The `modCost` function (from FME package) given a solution of a model and observed data, estimates the residuals, and the variable and model costs (sum of squared residuals).<br>
+Note:
+
+- `model`: model output; input the simulation value.<br> 
+- `obs`: input the observed data.<br>
+- `cost`: if not NULL, the output of a previous call to modCost; in this case, the new output will combine both.
+
+```{r}
+Gcost<-function (pars){
+    outdf.A1 <- pred.A (Gpars = pars,  DOSE = 1)
+    outdf.A2 <- pred.A (Gpars = pars,  DOSE = 2)
+    outdf.A3 <- pred.A (Gpars = pars,  DOSE = 3)
+    outdf.A4 <- pred.A (Gpars = pars,  DOSE = 5)
+    outdf.A5 <- pred.A (Gpars = pars,  DOSE = 10)
+    
+    cost<- modCost  (model = outdf.A1, obs = OBS.A1,  x ="Time")
+    cost<- modCost  (model = outdf.A2, obs = OBS.A2,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A3, obs = OBS.A3,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A4, obs = OBS.A4,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A5, obs = OBS.A5,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A1, obs = OBS.A6,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A2, obs = OBS.A7,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A3, obs = OBS.A8,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A4, obs = OBS.A9,  x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A5, obs = OBS.A10, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A1, obs = OBS.A11, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A2, obs = OBS.A12, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A3, obs = OBS.A13, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A4, obs = OBS.A14, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A5, obs = OBS.A15, x ="Time", cost = cost)
+    
+    return(cost)
+}
+```
+## List the initial parameters for later used in sensitivity analysis
+All the values of parameters are initial values before optimization from Chou and Lin (2019).
+
+```{r}
+Gtheta.int <- log(c(
+    Vmax_baso_invitro              = 393.45,                      
+    Km_baso                        = 27.2,                        
+    Vmax_apical_invitro            = 1808,                        
+    Km_apical                      = 278,                        
+    RAFbaso                        = 1.90,                        
+    RAFapi                         = 4.15,                       
+    Kdif                           = 5.1e-4,                       
+    KeffluxC                       = 2.09,                        
+    KbileC                         = 0.0026,                       
+    KurineC                        = 1.60,                        
+    Free                           = 0.022,                        
+    PL                             = 3.66,                        
+    PK                             = 0.8,                         
+    PM                             = 0.16,
+    PF                             = 0.13,
+    PRest                          = 0.22,                         
+    PPla                           = 0.41,
+    K0C                            = 1,                           
+    Kabsc                          = 2.12,                        
+    KunabsC                        = 7.05e-5,                     
+    Ktrans1C                       = 0.46,
+    Ktrans2C                       = 1,
+    Ktrans3C                       = 0.008,
+    Ktrans4C                       = 0.001,
+    Free_Fet                       = 0.022,
+    PL_Fet                         = 3.66,
+    PRest_Fet                      = 0.22
+))
+```
+
+## Sensitivity function 
+```{r}
+## senFun is the sensitivity analysis function in FME
+SnsPlasma <- sensFun(func = Gcost, parms = Gtheta.int, varscale = 1) 
+Sen       <- summary(SnsPlasma) ## summary the rsults of sensitivity analysis
+plot(summary(SnsPlasma)) ## plot the results of sensitivity analysis
+```
+
+## Select sensitive parameters
+
+```{r}
+Gtheta <- Gtheta.int[abs(Sen$Mean) > 1.2*mean(abs(Sen$Mean))]
+Gtheta 
+```
+
+## Select sensitive parameters and relevant parameters
+Since the Levenberg-Marquardt-algorithm is a gradient-based optimization, the identification of a global optimum cannot be guaranteed. We hence selected the sensitive parameters and a few parameters that were relevant to calibrated datasets in order to obtain good initial guesses for the optimization.  
+
+```{r}
+## Selected parameters
+Gtheta <- log(c(
+    Vmax_baso_invitro              = 393.45,                      
+    #Km_baso                        = 27.2,                        
+    #Vmax_apical_invitro            = 1808,                        
+    Km_apical                      = 278,                        
+    #RAFbaso                        = 1.90,                        
+    #RAFapi                         = 4.15,                       
+    #Kdif                           = 5.1e-4,                       
+    #KeffluxC                       = 2.09,                        
+    KbileC                         = 0.0026,                       
+    #KurineC                        = 1.60,                        
+    Free                           = 0.022,                        
+    PL                             = 3.66,                        
+    #PK                             = 0.8,                         
+    #PM                             = 0.16,
+    #PF                             = 0.13,
+    #PRest                          = 0.22,                         
+    #PPla                           = 0.41,
+    #K0C                            = 1,                           
+    #Kabsc                          = 2.12,                        
+    #KunabsC                        = 7.05e-5,                     
+    Ktrans1C                       = 0.46,
+    #Ktrans2C                       = 1,
+    Ktrans3C                       = 0.008,
+    #Ktrans4C                       = 0.001,
+    #Free_Fet                       = 0.022,
+    PL_Fet                         = 3.66,
+    PRest_Fet                      = 0.22
+))
+
+```
+
+## Least squares fit using levenberg-marquart algorithm
+The code `modFit` is the function fitting a model to data.<br>
+The component of function: <br>
+   - `f`: a function to be minimized; here you need to input the cost function defined above.<br>
+   - `p`: initial values for the parameters to be optimized over.<br>
+   - `method`: fitting method; here we choose the levenberg-marquart algorithm ("Marq").<br>
+   - `control`: additional control arguments - see details of nls.lm ("Marq").<br>
+   
+```{r}
+GFit <- modFit(f = Gcost, p = Gtheta, method ="Marq",
+               control = nls.lm.control(nprint = 1))
+```
+
+## Summary of fitting results
+The model calibration has completed; Now you can check the fitting results and check the parameter values
+```{r}
+summary(GFit)    ## Summary of fitting results 
+exp(GFit$par)    ## Converted the log-tranfromed parameters to arithmetic values
+```
+
+## Check your results
+```{r warning=FALSE}
+Gcost(GFit$par)
+```
+
+
+
+# Model calibration for the lactational PBPK model
+## Read these datasets and later used in model calibration
+The data collected from Chang et al., 2009; doi: https://doi.org/10.1016/j.reprotox.2009.01.005    
+Study design:
+
+- Dose regimen: 0.1, 0.3, 1 mg/kg/day.<br>
+- Exposure duration: exposure from GD0 (day positive for mating) through PND20.<br>
+- Abreviation: maternal plasma (MP), neonatal liver (NL), neonatal plasma (NP).<br>
+- Note: Original data included the samples at GD20, PND4 and PND72. This study used the samples at GD20 and PND4 for model calibration and not included the sample at PND72 due to the model limitation
+
+```{r}
+## Read the data and later used in model calibration
+## Filter the dataset and get the samples during lactation (Time > 480)
+OBS.B1  <- Data_0 %>% filter(Study == 2 & Sample == "MP" & Dose == 1 )  %>% select(Time = "Time", CPlas = "Conc")%>%filter(Time > 480) 
+OBS.B2  <- Data_0 %>% filter(Study == 2 & Sample == "MP" & Dose == 0.3) %>% select(Time = "Time", CPlas = "Conc")%>%filter(Time > 480)
+OBS.B3  <- Data_0 %>% filter(Study == 2 & Sample == "MP" & Dose == 0.1) %>% select(Time = "Time", CPlas = "Conc")%>%filter(Time > 480)
+OBS.B4  <- Data_0 %>% filter(Study == 2 & Sample == "NP" & Dose == 1)   %>% select(Time = "Time", CPlas_pup = "Conc")%>%filter(Time > 480)
+OBS.B5  <- Data_0 %>% filter(Study == 2 & Sample == "NP" & Dose == 0.3) %>% select(Time = "Time", CPlas_pup = "Conc")%>%filter(Time > 480)
+OBS.B6  <- Data_0 %>% filter(Study == 2 & Sample == "NP" & Dose == 0.1) %>% select(Time = "Time", CPlas_pup = "Conc")%>%filter(Time > 480)
+OBS.B7  <- Data_0 %>% filter(Study == 2 & Sample == "NL" & Dose == 1)   %>% select(Time = "Time", CL_pup = "Conc")%>%filter(Time > 480)
+OBS.B8  <- Data_0 %>% filter(Study == 2 & Sample == "NL" & Dose == 0.3) %>% select(Time = "Time", CL_pup = "Conc")%>%filter(Time > 480)
+OBS.B9  <- Data_0 %>% filter(Study == 2 & Sample == "NL" & Dose == 0.1) %>% select(Time = "Time", CL_pup = "Conc")%>%filter(Time > 480)
+```
+
+## Define the prediction function for the lactational model calibration
+```{r}
+## Exposure scenario B. Dosing from GD0 - PND20;
+pred.B <- function(Lpars, DOSE) {
+    
+## Get out of log domain
+Gpars <- lapply(GFit$par, exp)## Return a list of exp (parametrs for gestational model) from log scale
+Lpars <- lapply(Lpars, exp) ## Return a list of exp (parametrs for lactational model) from log scale
+    
+## Exposure scenario for gestational exposure
+GBW          = 0.225                  ## Default value: 0.225-0.307 from Loccisano et al. (2012); 
+tinterval    = 24                     ## Time interval; 
+GTDOSE       = 22                     ## Total dosing/Dose times; Repeat oral dose from GD0 - GD20
+GDOSE        = DOSE                   ## Input oral dose  
+GDOSEoral    = GDOSE*GBW              ## Amount of oral dose
+    
+## To create a data set of 1 subject receiving DOSEoral every 24 hours 
+Gex.oral <- ev (ID   = 1,             ## One individual
+                amt  = GDOSEoral,     ## Amount of dose 
+                ii   = tinterval,     ## Time interval
+                addl = GTDOSE - 1,    ## Addtional dosing 
+                cmt  = "AST",         ## The dosing compartment: AST Stomach  
+                tinf = 0.01,          ## Infusion time;  
+                replicate = FALSE)    ## No replicate
+    
+Gtsamp  = tgrid(0, tinterval*(GTDOSE - 1) + 24*1, 1) ## set up the output time; dtout = 1 hours 
+    
+## Simulation of exposure scenario during gestation (oral repeated dose to 0.1, 0.3, 1 mg/kg)
+Gout <- 
+    Gmod_R %>%
+    param (Gpars) %>%
+    update(atol = 1E-6, maxsteps = 50000) %>%          
+    mrgsim_d (data = Gex.oral, tgrid = Gtsamp)
+    
+Goutdf = cbind.data.frame(Time      = Gout$time,       # Output time (hours)
+                          CPlas     = Gout$Plasma,     # Maternal plasma
+                          CL        = Gout$Liver,      # Maternal liver
+                          CPlas_pup = Gout$Plasma_Fet, # Fetal plasma
+                          CL_pup    = Gout$Liver_Fet)  # Fetal liver
+
+# Extract the predicted values at GD21 and then used as initial values of the lactational model
+Init <- Gout %>% filter (time == 21*24) %>% 
+        select(-c("AUC_CPlas","AUC_CPlas_Fet", "Plasma", "Liver", "Plasma_Fet", "Liver_Fet"))
+    
+    
+## Exposure scenario for Lactational exposure; through PND0 - PND21 (end of lactation)
+LBW          = 0.242                  ## Body weight; 0.242-0.292 from Loccisano et al. (2012); 
+tinterval    = 24                     ## Time interval; 
+LTDOSE       = 22                     ## Total dosing/Dose times; Repeated oral dose from PND0 - PND21
+LDOSE        = DOSE                   ## Repeated oral dose (0.1, 0.3, 1 mg/kg);  
+LDOSEoral    = LDOSE*LBW              ## Amount of oral dose
+    
+    
+# To create a data set of 1 subject receiving DOSEoral.A every 24 hours
+Lex.oral <- ev (ID   = 1,            ## One individual
+                amt  = LDOSEoral,    ## Amount of dose 
+                ii   = tinterval,    ## Time interval
+                addl = LTDOSE - 1,   ## Addtional doseing 
+                cmt  = "AST",        ## The dosing comaprtment: AST Stomach  
+                tinf = 0.01,         ## Infusion time;  
+                replicate = FALSE)   ## No replicate
+    
+Ltsamp       = tgrid(0, tinterval*(LTDOSE - 1) + 24*2, 1) ## Simulation time from PND0 to PND21 with dosing of 1 + (LTDOSE - 1) + 2 days (No dosing)
+    
+## The concentration at the end of gestation used as initial concentration of lactation model 
+Lout <- Lmod_R %>% 
+        init(APlas_free = Init$APlas_free, APTC = Init$APTC, AFil = Init$AFil, 
+             AKb = Init$AKb, ARest = Init$ARest, AL = Init$AL, AM = Init$AM, AF = Init$AF, 
+             A_baso = Init$A_baso, A_apical = Init$A_apical, Adif = Init$Adif, Aefflux = Init$Aefflux,              APlas_free_pup = Init$APlas_Fet_free, AL_pup = Init$AL_Fet, 
+             ARest_pup = Init$ARest_Fet) %>%
+        param (Lpars) %>%
+        update(atol = 1E-6, maxsteps = 500000) %>%          
+        mrgsim_d (data = Lex.oral, tgrid = Ltsamp) 
+    
+Loutdf = cbind.data.frame(Time   = Lout$time + 22*24,   # Simulation time + GD22 (22*24 hours)
+                          CPlas  = Lout$Plasma,         # Maternal plasma
+                          CL     = Lout$Liver,          # Maternal liver
+                          CPlas_pup = Lout$Plasma_pup,  # Neonatal palsma
+                          CL_pup    = Lout$Liver_pup)   # Neonatal liver
+    
+return (Loutdf)
+}
+
+```
+
+## Create a cost function for lactational model calibration 
+Define a cost function `Lcost` to estimate the lactational model residual. 
+
+```{r}
+## Estimate the model residual by modCost function
+Lcost<-function (pars){
+    outdf.A <- pred.B (Lpars = pars,  DOSE = 1)
+    outdf.B <- pred.B (Lpars = pars,  DOSE = 0.3)
+    outdf.C <- pred.B (Lpars = pars,  DOSE = 0.1)
+    
+    cost<- modCost  (model = outdf.A, obs = OBS.B1, x ="Time")
+    cost<- modCost  (model = outdf.B, obs = OBS.B2, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.C, obs = OBS.B3, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A, obs = OBS.B4, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.B, obs = OBS.B5, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.C, obs = OBS.B6, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.A, obs = OBS.B7, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.B, obs = OBS.B8, x ="Time", cost = cost)
+    cost<- modCost  (model = outdf.C, obs = OBS.B9, x ="Time", cost = cost)
+    
+    return(cost)
+}
+
+```
+
+## List the inital parameter for the later used in senstivity anlaiysis
+All the values of parameters are initial values before optimization from Chou and Lin (2019) and Loccisano et al. (2012).
+```{r}
+## initial parmaeters for the lactational model
+Ltheta.int <- log(c(
+    Vmax_baso_invitro              = 393.45,
+    Km_baso                        = 27.2,
+    Vmax_apical_invitro            = 1808,
+    Km_apical                      = 278,
+    RAFbaso                        = 1.90,
+    RAFapi                         = 4.15,
+    KeffluxC                       = 2.09,
+    KbileC                         = 0.0026,
+    KurineC                        = 1.6,
+    Free                           = 0.022,
+    PL                             = 3.66,
+    PK                             = 0.8,
+    PM                             = 0.16,
+    PF                             = 0.13,
+    PRest                          = 0.26,
+    PMilkM                         = 1.9,
+    PMilkP                         = 0.11,
+    PAMilkC                        = 0.5,
+    K0C                            = 1,
+    KabsC                          = 2.12,
+    KunabsC                        = 7.05e-5,
+    Kdif                           = 5.1e-4,
+    KMilk0                         = 0.0268,
+    Free_pup                       = 0.022,
+    PL_pup                         = 3.66,
+    PK_pup                         = 0.8,
+    PRest_pup                      = 0.22,
+    KabsC_pup                      = 2.12,
+    KbileC_pup                     = 0.35,
+    KurineC_pup                    = 1.6,
+    KeffluxC_p                     = 2.09,
+    Kdif_pup_0                     = 0.001,
+    Vmax_baso_invitro_p            = 393.45,
+    Km_baso_p                      = 27.2,
+    Vmax_apical_invitro_p          = 1808,
+    Km_apical_p                    = 278
+))
+
+```
+
+## Sensivity analysis
+```{r}
+SnsPlasma <- sensFun(func = Lcost, parms = Ltheta.int, varscale = 1)
+Sen       <- summary(SnsPlasma)
+plot(summary(SnsPlasma))
+```
+
+## Select senstive parameters; 
+```{r}
+Ltheta <- Ltheta.int[abs(Sen$Min) > 1.5*mean(abs(Sen$Min))]
+Ltheta 
+```
+
+## Select senstive parameters and relavant parameters based on available data
+```{r}
+Ltheta <- log(c(
+    #Vmax_baso_invitro              = 393.45,
+    #Km_baso                        = 27.2,
+    Vmax_apical_invitro            = 1808,
+    #Km_apical                      = 278,
+    #RAFbaso                        = 1.90,
+    #RAFapi                         = 4.15,
+    #KeffluxC                       = 2.09,
+    #KbileC                         = 0.0026,
+    #KurineC                        = 1.6,
+    Free                           = 0.022,
+    PL                             = 3.66,
+    #PK                             = 0.8,
+    #PM                             = 0.16,
+    #PF                             = 0.13,
+    PRest                          = 0.26,
+    PMilkM                         = 1.9,
+    #PMilkP                         = 0.11,
+    #PAMilkC                        = 0.5,
+    #K0C                            = 1,
+    #KabsC                          = 2.12,
+    #KunabsC                        = 7.05e-5,
+    #Kdif                           = 5.1e-4,
+    KMilk0                         = 0.0268,
+    #Free_pup                       = 0.022,
+    PL_pup                         = 3.66
+    #PK_pup                         = 0.8,
+    #PRest_pup                      = 0.22
+    #KabsC_pup                      = 2.12,
+    #KbileC_pup                     = 0.0026,
+    #KurineC_pup                    = 1.6
+    #KeffluxC_p                     = 2.09,
+    #Kdif_pup_0                     = 0.001,
+    #Vmax_baso_invitro_p            = 393.45,
+    #Km_baso_p                      = 27.2,
+    #Vmax_apical_invitro_p          = 1808
+    #Km_apical_p                    = 278
+))
+```
+## Least squares fit using levenberg-marquart algorithm
+```{r}
+LFit <- modFit(f = Lcost, p = Ltheta, method ="Marq",
+               control = nls.lm.control(nprint = 1))
+```
+
+## Summary of fitting results
+The model calibration has completed; Now you can check the fitting results and check the parameter values
+```{r}
+summary(LFit)    ## Summary of fitting results 
+exp(LFit$par)    ## Converted the log-tranfromed parmaeters to arithmetic value
+```
+
+## Check your results
+```{r warning=FALSE}
+Lcost(LFit$par)
+```
+
+
+# Save results
+You can use the function `saveRDS()`save the fitting results to RDS files. 
+
+```{r eval=FALSE}
+#saveRDS(GFit, file  ='GFit_rat.rds')    # Save the fitting results for gestational PBPK model
+#saveRDS(LFit, file  ='LFit_rat.rds')   # Save the fitting results for lactational PBPK model
+```
+
+
+
+
+
