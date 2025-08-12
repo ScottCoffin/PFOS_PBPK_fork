@@ -8,18 +8,24 @@ library(dplyr)     # Needed for the pipe %>% operator
 library(mrgsolve)  # Needed to run the main PBPK code
 library(reshape)   # melt function to reshape the table
 library(tidyverse) # Needed for the pipe %>% operator
+# run if not already installed:
+# install.packages(
+#   "https://cran.r-project.org/src/contrib/Archive/ggjoy/ggjoy_0.4.1.tar.gz",
+#   repos = NULL,
+#   type = "source"
+# )
 library(ggjoy)     # Used to create Figure 3
 library(ggplot2)   # ggplot is the basic package for creating plots. ggplots is version 2 of ggplot. ggjoy uses some functions in ggplot2.
 
 
 ## Loading human, rat, mouse, monkey MCMC data
-Human.MCMC        <- readRDS(file = "Human.MCMC.rds")
-Rat.MCMC          <- readRDS(file = "Rat.MCMC.rds")
-Mouse.MCMC        <- readRDS(file = "Mouse.MCMC.rds")
-Monkey.MCMC       <- readRDS(file = "Monkey.MCMC.rds")
+Human.MCMC        <- readRDS(file = "Additional files/Results/Workplace/Human.MCMC.rds")
+Rat.MCMC          <- readRDS(file = "Additional files/Results/Workplace/Rat.MCMC.rds")
+Mouse.MCMC        <- readRDS(file = "Additional files/Results/Workplace/Mouse.MCMC.rds")
+Monkey.MCMC       <- readRDS(file = "Additional files/Results/Workplace/Monkey.MCMC.rds")
 
 ## loading the theta names
-theta.names       <- readRDS(file = "theta.names.rds")
+theta.names       <- readRDS(file = "Additional files/Results/Workplace/theta.names.rds")
 
 ## Sampling from posterior parameters to generate the posterior distributions 
 ## Human posteior distributions
@@ -139,11 +145,13 @@ p1=
     legend.text             = element_text (size = 18,face="bold")) + 
     labs (x = "", y = "") 
 
-# Save the image by using the Export button, adjust the height and width, choose image format, preview
-ggsave("Fig.3.tiff",scale = 1,
-       plot = p1,
-       path = "D:/Desktop",
-       width = 25, height = 20, units = "cm",dpi=320)
+p1
+
+# # Save the image by using the Export button, adjust the height and width, choose image format, preview
+# ggsave("Fig.3.tiff",scale = 1,
+#        plot = p1,
+#        path = "D:/Desktop",
+#        width = 25, height = 20, units = "cm",dpi=320)
 
 
 dev.off()

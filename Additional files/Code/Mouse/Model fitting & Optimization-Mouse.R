@@ -13,11 +13,11 @@ library(foreach)     # Package for parallel computing
 library(doParallel)  # Package for parallel computing
 library(bayesplot)   # Package for MCMC traceplot
 
-## Set working direction to the data files
+
+source("Additional files/Code/Mouse/Mrgsolve code-Mouse.R")
 
 ## Build mrgsolve-based PBPK Model
 mod <- mcode ("micepbpk", micePBPK.code)
-
 
 ################################################################################################## 
 # Mouse datasets for model calibration                                                           #
@@ -31,16 +31,16 @@ mod <- mcode ("micepbpk", micePBPK.code)
 ## The observed data adopoted from Chang et al., 2012; single oral dose of 1 mg/kg; 
 ## input data set
 
-Obs.A1 <- read.csv(file ="A1.csv")   ## A1 dataset: oral single dose of 1 mg/kg; Matrix: plasma (Unit: ug/ml)
+Obs.A1 <- read.csv(file ="Additional files/Datasets/Mouse/A1.csv")   ## A1 dataset: oral single dose of 1 mg/kg; Matrix: plasma (Unit: ug/ml)
 names(Obs.A1)=c("Time", "CA")
 
-Obs.A2 <-read.csv(file  ="A2.csv")   ## A2 dataset: oral single dose of 1 mg/kg; Liver (Unit: ug/g)
+Obs.A2 <-read.csv(file  ="Additional files/Datasets/Mouse/A2.csv")   ## A2 dataset: oral single dose of 1 mg/kg; Liver (Unit: ug/g)
 names(Obs.A2)=c("Time", "CL")
 
-Obs.A3 <- read.csv(file ="A3.csv")   ## A3 dataset: oral single dose of 1 mg/kg; Kidney (Unit: ug/g)
+Obs.A3 <- read.csv(file ="Additional files/Datasets/Mouse/A3.csv")   ## A3 dataset: oral single dose of 1 mg/kg; Kidney (Unit: ug/g)
 names(Obs.A3)=c("Time", "CK")
 
-Obs.A4 <-read.csv(file  ="A4.csv")   ## A4 dataset: oral single dose of 1 mg/kg; Urine (Unit: % dose)
+Obs.A4 <-read.csv(file  ="Additional files/Datasets/Mouse/A4.csv")   ## A4 dataset: oral single dose of 1 mg/kg; Urine (Unit: % dose)
 names(Obs.A4)=c("Time", "Curine")
 
 
@@ -210,16 +210,16 @@ plot.A4
 ## Datasets adopoted from Chang et al., 2012; single oral dose of 20 mg/kg; 
 ## Input data set 
 
-Obs.B1 <- read.csv(file="B1.csv")  # B1 dataset: CD1 mice oral single dose of 20 mg/kg; matrix: plasma (Unit: ug/ml)
+Obs.B1 <- read.csv(file="Additional files/Datasets/Mouse/B1.csv")  # B1 dataset: CD1 mice oral single dose of 20 mg/kg; matrix: plasma (Unit: ug/ml)
 names(Obs.B1)=c("Time", "CA")
 
-Obs.B2 <-read.csv(file="B2.csv")   # B2 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: liver (Unit: ug/g)
+Obs.B2 <-read.csv(file="Additional files/Datasets/Mouse/B2.csv")   # B2 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: liver (Unit: ug/g)
 names(Obs.B2)=c("Time", "CL")
 
-Obs.B3 <- read.csv(file="B3.csv")  # B3 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: kidney (Unit: ug/g)
+Obs.B3 <- read.csv(file="Additional files/Datasets/Mouse/B3.csv")  # B3 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: kidney (Unit: ug/g)
 names(Obs.B3)=c("Time", "CK")
 
-Obs.B4 <-read.csv(file="B4.csv")   # B4 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: urine (Unit: % dose)
+Obs.B4 <-read.csv(file="Additional files/Datasets/Mouse/B4.csv")   # B4 dataset: CD1 mice oral single dose of 20 mg/kgPFOS; matrix: urine (Unit: % dose)
 names(Obs.B4)=c("Time", "Curine")
 
 
@@ -447,10 +447,10 @@ mcmc_trace (
 
 
 # output the MCMC results
-write.csv(quan.mouse,file="mouse.summary_pos.csv")
-write.csv(MC.mouse.1,file="mouse.pos.csv")
-saveRDS(MCMC[[1]],file ='mouse.MCMC.rds')
-saveRDS(combinedchains,file='mouse.comb.rds')
+write.csv(quan.mouse,file="Additional files/Datasets/Mouse/mouse.summary_pos.csv")
+write.csv(MC.mouse.1,file="Additional files/Datasets/Mouse/mouse.pos.csv")
+saveRDS(MCMC[[1]],file ='Additional files/Datasets/Mouse/mouse.MCMC.rds')
+saveRDS(combinedchains,file='Additional files/Datasets/Mouse/mouse.comb.rds')
 
 
 ## Plot using MCMC parameters

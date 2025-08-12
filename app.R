@@ -38,6 +38,8 @@ load_deployment_date <-
 
 ############### STATIC DATA ############
 
+############## PFOS PBPK Models and Parameters ######
+############ - code and models from Chou & Lin 2019 (https://www.sciencedirect.com/science/article/pii/S016041201930203X) --
 # Load PBPK models for different species
 RatPBPK.code <- readRDS("models/ratPBPK.RDS")
 ratpbpk <- mcode("Ratpbpk", RatPBPK.code)
@@ -60,6 +62,70 @@ human_params <- readRDS("models/human_mcmc.rds")
 human_best <- human_params$bestpar
 monkey_params <- readRDS("models/monkey_mcmc.rds")
 monkey_best <- monkey_params$bestpar
+
+################# PFOS, PFOA, PFHxS Male Mouse Models ######
+######--- code and data from Zhu et al. (2023) https://ehp.niehs.nih.gov/doi/10.1289/EHP11969
+### their code is incomplete!!
+
+##### Fabian Fischer's 2025 Active Transporter PBPK Model ####
+# load Fischer model function
+source("Additional files/Code/Fischer 2025/Fischer_PBPK.R")
+# loads "Fischer_PBPK_mouse" function
+## ---- Fischer (MassTransferPBPK) parameter catalog (used for validation & UI) ----
+# Path already used by your server call:
+FISCHER_PARAM_PATH <- "Additional files/Datasets/Fischer/pfas_parameters.csv"
+
+# Read once (be tolerant if file is missing at dev-time)
+fischer_params <- tryCatch({
+  if (file.exists(FISCHER_PARAM_PATH)) {
+    readr::read_csv(FISCHER_PARAM_PATH, show_col_types = FALSE)
+  } else {
+    NULL
+  }
+}, error = function(e) NULL)
+
+# What PFAS are supported by the MassTransferPBPK?
+fischer_supported_pfas <- if (!is.null(fischer_params) && "PFAS" %in% names(fischer_params)) {
+  sort(unique(fischer_params$PFAS))
+} else character(0)
+
+# (Current Fischer function is mouse/male only)
+fischer_supported_species <- "Mouse"
+fischer_supported_sex     <- "Male"
+
+## ---- Palettes used across plots ----
+# Model-type colors (stable, named)
+model_type_colors <- c(
+  "PBPK"               = "#3A9AB2",
+  "single-compartment" = "#6FB2C1",
+  "two-compartment"    = "#91BAB6",
+  "biphasic"           = "#91BAD6",
+  "MassTransferPBPK"   = "#1E88E5"  # Fischer
+)
+
+# Compartment linetypes (stable, named)
+compartment_linetypes <- c(
+  "Plasma"  = "solid",
+  "Central" = "solid",
+  "Blood"   = "solid",
+  "Liver"   = "longdash",
+  "Kidneys" = "dotdash",
+  "Gut"     = "twodash",
+  "Rest"    = "dotted"
+)
+
+# Compartment colors if/when you want color by compartment
+compartment_colors <- c(
+  "Plasma"  = "#1f78b4",
+  "Central" = "#1f78b4",
+  "Blood"   = "#1f78b4",
+  "Liver"   = "#33a02c",
+  "Kidneys" = "#6a3d9a",
+  "Gut"     = "#ff7f00",
+  "Rest"    = "#b15928"
+)
+
+##-------------------------
 
 # general TK params for non PBPK-models
 # This data is prepared in the TK_data_prep.R script. The values in this are imported from the PFHpA Repo (https://github.com/ScottCoffin/PFHpA.git) in output/data/dose_to_serum_data.xlsx
@@ -101,20 +167,20 @@ species_models <- list(
 
 # Initialize editable table data with unrestricted input fields
 initial_table_data <- data.frame(
-  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX"),
-                levels = unique(tk_params$PFAS)),
-  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat"),
+  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX", "PFBS"),
+                levels = unique(tk_params$PFAS)), # ensure Fischer model in there too!
+  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat", "Mouse"),
                    levels = c("Rat", "Mouse", "Human", "Monkey")),
-  Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male")),
+  Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male", "Male")),
   # Route = factor(c("Intravenous", "Intragastric", "Oral", "Oral") ,
   #                levels = c("Intravenous", "Intragastric", "Intraperitoneal", "Oral", "Dermal")),
-  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "biphasic", "PBPK", "biphasic")),
+  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "biphasic", "PBPK", "biphasic", "MassTransferPBPK")),
   #Body_Weight_kg = c(0.3, 0.025, 0.3, 0.3),
-  Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30),
-  Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24)),
-  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28)),
-  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696)),
-  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA)),
+  Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30, 30),
+  Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24, 24)),
+  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28, 65)),
+  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696, 1560)),
+  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA, 0.2899)),
   stringsAsFactors = FALSE
 )
 
@@ -1562,6 +1628,14 @@ server <- function(input, output, session) {
         if (is.null(param_table) || !pfas %in% colnames(param_table)) {
           return(paste(species, sex, pfas, "(PBPK parameters missing)"))
         }
+        # Fischer Model
+      if (model_type == "MassTransferPBPK") {
+        # Check PBPK model parameters in reactive_params
+        #param_table <- reactive_params[[paste0(species, "_", sex)]]
+        #if (is.null(param_table) || !pfas %in% colnames(param_table)) {
+          #return(paste(species, sex, pfas, "(PBPK parameters missing)"))
+        return("Fischer Model - check if PFAS is in list, and that species is mouse/male")
+      }
       } else {
         # Check required parameters for non-PBPK models in params_data
         matching_rows <- params_data[
@@ -1697,14 +1771,16 @@ server <- function(input, output, session) {
 ############################################### Run Simulation ##########################################
 #####################################################################################################
   
+  # 1) Make sure simulate_pfas() is sourced/available above this server code
+  # source("R/simulate_pfas.R")  # if you saved it there
+  
   simulation_results <- eventReactive(input$run, {
     shiny::req(params_data(), experiment_data())
     
     print("Running simulation...")
     
-      # Ensure consistent data types before joining
     exp_data <- experiment_data() %>%
-      mutate(
+      dplyr::mutate(
         Species = as.character(Species),
         PFAS = as.character(PFAS),
         Sex = as.character(Sex),
@@ -1714,7 +1790,7 @@ server <- function(input, output, session) {
     print(head(params_data()))
     
     params <- params_data() %>%
-      mutate(
+      dplyr::mutate(
         Species = as.character(Species),
         PFAS = as.character(PFAS),
         Sex = as.character(Sex),
@@ -1723,23 +1799,21 @@ server <- function(input, output, session) {
     
     # Join experiment_data with params_data
     experiment_with_params <- exp_data %>%
-      left_join(params, by = c("Species", "Sex", "PFAS", "Model_Type"))
+      dplyr::left_join(params, by = c("Species", "Sex", "PFAS", "Model_Type"))
     
-    # Define consistent column structure
+    # 2) Add "Compartment" so we can return multiple outputs per timepoint
     result_cols <- c(
       "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg",
-      "Exposure_Duration_Days", "Interval_Hours", "Time", "Concentration"
+      "Exposure_Duration_Days", "Interval_Hours", "Compartment", "Time", "Concentration"
     )
     
-  
     # Run the simulation for each row in the joined data
-    results <- lapply(1:nrow(experiment_with_params), function(i) {
+    results <- lapply(seq_len(nrow(experiment_with_params)), function(i) {
       row <- experiment_with_params[i, ]
       pfas <- row$PFAS
       species <- row$Species
       sex <- row$Sex
       model_type <- row$Model_Type
-    #  bw <- row$Body_Weight_kg
       dose <- row$Dose_mg_per_kg
       interval <- row$Interval_Hours
       dose_frequency_per_day <- 24 / interval
@@ -1753,13 +1827,13 @@ server <- function(input, output, session) {
       cat("Dose per kg:", dose, "mg/kg\n")
       cat("Exposure Duration:", exposure_duration_hrs, "hours\n")
       
+      # MrGSolve styles
       if (model_type == "PBPK") {
-        # Extract default kinetic parameters from species_models
         species_model <- species_models[[species]]
         pars <- species_model$params
         model <- species_model$model
         default_bw <- species_model$default_bw
-        # For PBPK model, dose calculations
+        
         dose_mg <- default_bw * dose
         interval_between_doses <- 24 / dose_frequency_per_day
         total_doses <- exposure_duration_days * dose_frequency_per_day
@@ -1769,12 +1843,11 @@ server <- function(input, output, session) {
         cat("Interval:", interval, "hours\n")
         
         ex <- ev(ID = 1, amt = dose_mg, ii = interval_between_doses, addl = total_doses - 1, cmt = "AST")
-        tgrid <- tgrid(0, exposure_duration_hrs + 96, by = 1) #model every 1 hour
-      
+        tgrid <- tgrid(0, exposure_duration_hrs + 96, by = 1) # model every 1 hour
         
         output <- tryCatch({
           model %>%
-            param(10 ^ pars) %>% #get out of log10 space
+            param(10 ^ pars) %>% # get out of log10 space
             Req(Plasma) %>%
             update(atol = 1E-8, maxsteps = 10000) %>%
             mrgsim_d(data = ex, tgrid = tgrid)
@@ -1792,11 +1865,12 @@ server <- function(input, output, session) {
             Dose_mg_per_kg = dose,
             Exposure_Duration_Days = exposure_duration_days,
             Interval_Hours = interval,
+            Compartment = "Plasma",
             Time = output$time / 24,
-            Concentration = signif(output$Plasma, 4)
+            Concentration = signif(output$Plasma, 4),
+            stringsAsFactors = FALSE
           )
         } else {
-          # Return NA for PBPK model failures
           data.frame(
             Species = species,
             PFAS = pfas,
@@ -1805,36 +1879,90 @@ server <- function(input, output, session) {
             Dose_mg_per_kg = dose,
             Exposure_Duration_Days = exposure_duration_days,
             Interval_Hours = interval,
+            Compartment = "Plasma",
             Time = NA,
-            Concentration = NA
+            Concentration = NA,
+            stringsAsFactors = FALSE
           )
         }
+        
+        # Fischer Model
+      } else if (model_type == "MassTransferPBPK") {
+        # simulate_pfas returns one row per hour with columns: time_h, C_blood, C_liver, C_kidneys, C_gut, C_rest
+        sim_df <- tryCatch({
+          Fischer_PBPK_mouse(
+            PFAS = pfas,
+            dose_mg_per_kg = dose,
+            exposure_duration_days = exposure_duration_days,
+            interval_hours = interval,
+            pfas_param_path = "Additional files/Datasets/Fischer/pfas_parameters.csv"
+          )
+        }, error = function(e) {
+          message(paste("Fischer_PBPK_mouse error for Species:", species, pfas, "Message:", e$message))
+          return(NULL)
+        })
+        
+        if (is.null(sim_df)) {
+          return(data.frame(
+            Species = species, PFAS = pfas, Sex = sex, Model_Type = model_type,
+            Dose_mg_per_kg = dose, Exposure_Duration_Days = exposure_duration_days,
+            Interval_Hours = interval, Compartment = NA, Time = NA, Concentration = NA,
+            stringsAsFactors = FALSE
+          ))
+        }
+        
+        # Pivot to long so each compartment appears as its own row
+        # (Compartment ∈ Blood, Liver, Kidneys, Gut, Rest)
+        long <- tidyr::pivot_longer(
+          sim_df,
+          cols = c("C_blood", "C_liver", "C_kidneys", "C_gut", "C_rest"),
+          names_to = "Compartment",
+          values_to = "Concentration"
+        )
+        
+        long$Compartment <- dplyr::recode(
+          long$Compartment,
+          C_blood = "Blood", C_liver = "Liver", C_kidneys = "Kidneys",
+          C_gut = "Gut", C_rest = "Rest"
+        )
+        
+        # Time in days (your app uses days on the x-axis)
+        out <- dplyr::tibble(
+          Species = species,
+          PFAS = pfas,
+          Sex = sex,
+          Model_Type = model_type,
+          Dose_mg_per_kg = dose,
+          Exposure_Duration_Days = exposure_duration_days,
+          Interval_Hours = interval,
+          Compartment = long$Compartment,
+          Time = long$time_h / 24,
+          Concentration = long$Concentration
+        )
+        
+        out
+        
       } else {
-        # For simplified model (one or two-compartment)
+        # ----- Your simplified PK branches (unchanged) -----
         ke <- log(2) / row$Half_Life_hr
         ka <-  row$Absorption_Coefficient_unitless
-        vd <-  row$Volume_of_Distribution_L_per_kg 
+        vd <-  row$Volume_of_Distribution_L_per_kg
         VD2 <- row$Volume_of_Distribution_alpha_L_per_kg
         VDc <- row$Volume_of_Distribution_beta_L_per_kg
         k_alpha <- row$K_alpha
         k_beta <- row$K_beta
         n_doses <- floor(exposure_duration_hrs / interval)
-        times <- seq(0, exposure_duration_hrs + 96, by = 1) # model every 1 hr
+        times <- seq(0, exposure_duration_hrs + 96, by = 1)
         
-        
-      conc <- if (model_type == "biphasic" & !is.na(ka) & !is.na(VD2) & !is.na(VDc) & !is.na(k_alpha) & !is.na(k_beta)){
-      # biphasic model (if all alpha/beta phase params are available)
-        map_dbl(times, ~ two_phase(D_per_dose = dose, #alpha phase params
-                                                  VD2 = VD2, #VD0_l/kg
-                                                  k_alpha = k_alpha, kabs = ka,
-                                                  #beta phase params
-                                                  k_beta = k_beta, VDc = VDc, #VDss_L/kg
-                                                  tau = interval, n_doses = n_doses, t = .x,
-                                                  exposure_duration_hr = exposure_duration_hrs))
+        conc <- if (model_type == "biphasic" & !is.na(ka) & !is.na(VD2) & !is.na(VDc) & !is.na(k_alpha) & !is.na(k_beta)){
+          purrr::map_dbl(times, ~ two_phase(
+            D_per_dose = dose, VD2 = VD2, k_alpha = k_alpha, kabs = ka,
+            k_beta = k_beta, VDc = VDc, tau = interval, n_doses = n_doses, t = .x,
+            exposure_duration_hr = exposure_duration_hrs))
         } else if (model_type == "two-compartment") {
-          map_dbl(times, ~ full_conc(dose, vd, ke, ka, interval, n_doses, .x, exposure_duration_hrs))
+          purrr::map_dbl(times, ~ full_conc(dose, vd, ke, ka, interval, n_doses, .x, exposure_duration_hrs))
         } else {
-          map_dbl(times, ~ simplified_conc(dose, vd, ke, interval, n_doses, .x, exposure_duration_hrs))
+          purrr::map_dbl(times, ~ simplified_conc(dose, vd, ke, interval, n_doses, .x, exposure_duration_hrs))
         }
         
         data.frame(
@@ -1845,13 +1973,15 @@ server <- function(input, output, session) {
           Dose_mg_per_kg = dose,
           Exposure_Duration_Days = exposure_duration_days,
           Interval_Hours = interval,
+          Compartment = "Central",
           Time = times / 24,
-          Concentration = conc
+          Concentration = conc,
+          stringsAsFactors = FALSE
         )
       }
     })
     
-    # Ensure all results have the same columns and structure
+    # Ensure uniform structure
     results <- lapply(results, function(res) {
       res[result_cols[!result_cols %in% names(res)]] <- NA
       res[result_cols]
@@ -1859,7 +1989,6 @@ server <- function(input, output, session) {
     
     do.call(rbind, results)
   })
-  
   
   
 

@@ -11,10 +11,10 @@ library(dplyr)    # Needed for the pipe %>% operator
 library(reshape)  # melt function to reshape the table, reshape2 is version 2 of reshape. reshape is more stable when using melt function. We decided to use reshape for all.
 
 ## Input PBPK model
-micePBPK.code     <- readRDS (file = "micePBPK.RDS")
-monkeyPBPK.code   <- readRDS (file = "monkeyPBPK.RDS")
-ratPBPK.code      <- readRDS (file = "ratPBPK.RDS")
-humanPBPK.code    <- readRDS (file = "humanPBPK.RDS")
+micePBPK.code     <- readRDS (file = "Additional files/Results/Workplace/micePBPK.RDS")
+monkeyPBPK.code   <- readRDS (file = "Additional files/Results/Workplace/monkeyPBPK.RDS")
+ratPBPK.code      <- readRDS (file = "Additional files/Results/Workplace/ratPBPK.RDS")
+humanPBPK.code    <- readRDS (file = "Additional files/Results/Workplace/humanPBPK.RDS")
 
 ## Loading pbpk model 
 mod.mouse         <- mcode ("micepbpk", micePBPK.code)
@@ -24,25 +24,25 @@ mod.human         <- mcode ("humanpbpk", humanPBPK.code)
 
 
 ## Loading human, rat, mouse, monkey observed data
-Human.obs         <- readRDS(file = "Human.obs.rds")
-Rat.obs           <- readRDS(file = "Rat.obs.rds")
-Mouse.obs         <- readRDS(file = "Mouse.obs.rds")
-Monkey.obs        <- readRDS(file = "Monkey.obs.rds")
+Human.obs         <- readRDS(file = "Additional files/Results/Workplace/Human.obs.rds")
+Rat.obs           <- readRDS(file = "Additional files/Results/Workplace/Rat.obs.rds")
+Mouse.obs         <- readRDS(file = "Additional files/Results/Workplace/Mouse.obs.rds")
+Monkey.obs        <- readRDS(file = "Additional files/Results/Workplace/Monkey.obs.rds")
 
 ## Loading human, rat, mouse, monkey MCMC data
-Human.MCMC        <- readRDS(file = "Human.MCMC.rds")
-Rat.MCMC          <- readRDS(file = "Rat.MCMC.rds")
-Mouse.MCMC        <- readRDS(file = "Mouse.MCMC.rds")
-Monkey.MCMC       <- readRDS(file = "Monkey.MCMC.rds")
+Human.MCMC        <- readRDS(file = "Additional files/Results/Workplace/Human.MCMC.rds")
+Rat.MCMC          <- readRDS(file = "Additional files/Results/Workplace/Rat.MCMC.rds")
+Mouse.MCMC        <- readRDS(file = "Additional files/Results/Workplace/Mouse.MCMC.rds")
+Monkey.MCMC       <- readRDS(file = "Additional files/Results/Workplace/Monkey.MCMC.rds")
 
 ## Population mean (u)
-theta.Human  = readRDS (file="theta.Human.Rds")
-theta.Monkey = readRDS (file="theta.Monkey.Rds")
-theta.Mouse  = readRDS (file="theta.Mouse.Rds")
-theta.Rat    = readRDS (file="theta.Rat.Rds")
+theta.Human  = readRDS (file="Additional files/Results/Workplace/theta.Human.Rds")
+theta.Monkey = readRDS (file="Additional files/Results/Workplace/theta.Monkey.Rds")
+theta.Mouse  = readRDS (file="Additional files/Results/Workplace/theta.Mouse.Rds")
+theta.Rat    = readRDS (file="Additional files/Results/Workplace/theta.Rat.Rds")
 
 ## loading the theta names
-theta.names       <- readRDS(file = "theta.names.rds")
+theta.names       <- readRDS(file = "Additional files/Results/Workplace/theta.names.rds")
 which_sig         <- grep("sig", theta.names)
 
 ############################# prediction function ############################
