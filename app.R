@@ -93,6 +93,26 @@ fischer_supported_pfas <- if (!is.null(fischer_params) && "PFAS" %in% names(fisc
 fischer_supported_species <- "Mouse"
 fischer_supported_sex     <- "Male"
 
+# helper to validate a single MassTransferPBPK combo
+# tweak your check to use the reactive list
+# Put this near where you define fischer_supported_* so they’re in scope
+is_mass_transfer_supported <- function(pfas, species, sex,
+                                       pfas_pool       = fischer_supported_pfas,
+                                       allowed_species = fischer_supported_species,
+                                       allowed_sex     = fischer_supported_sex) {
+  n <- length(pfas)
+  if (is.null(pfas_pool) || !length(pfas_pool)) return(rep(FALSE, n))
+  
+  p_ok  <- !is.na(pfas)    & pfas    %in% pfas_pool
+  s_ok  <- !is.na(species) & species == allowed_species
+  sx_ok <- !is.na(sex)     & sex     == allowed_sex
+  
+  out <- p_ok & s_ok & sx_ok
+  out[is.na(out)] <- FALSE
+  out
+}
+
+
 ## ---- Palettes used across plots ----
 # Model-type colors (stable, named)
 model_type_colors <- c(
@@ -164,11 +184,13 @@ species_models <- list(
   Monkey = list(PFAS = "PFOS", Sex = "Male",model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
 )
 
+# PFAS levels available
+pfas_levels <- unique(c(unique(tk_params$PFAS), fischer_supported_pfas))
 
 # Initialize editable table data with unrestricted input fields
 initial_table_data <- data.frame(
   PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX", "PFBS"),
-                levels = unique(tk_params$PFAS)), # ensure Fischer model in there too!
+                levels = pfas_levels), # ensure Fischer model in there too!
   Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat", "Mouse"),
                    levels = c("Rat", "Mouse", "Human", "Monkey")),
   Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male", "Male")),
@@ -179,7 +201,7 @@ initial_table_data <- data.frame(
   Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30, 30),
   Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24, 24)),
   Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28, 65)),
-  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696, 1560)),
+  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696, 1559)),
   Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA, 0.2899)),
   stringsAsFactors = FALSE
 )
@@ -451,7 +473,7 @@ ui <- dashboardPage(
                                   ),
                                   br(),
                                   br(),
-                                  p("To view simulation results, go to the ", strong("Results"), "tab on the left side of the app."), 
+                                  p("To view simulation results, go to the ", strong("Results"), "tab on the left side of the app.") 
                                 ),
                                 br(),
                                 h3("View TK data for selected chemical-species-sex combinations"),
@@ -461,13 +483,13 @@ ui <- dashboardPage(
                                     ),
                                 box(width = 12, 
                                      div(style = "display: flex; justify-content: center; align-items: center;", # Center the button
-                                column(width = 2, downloadButton("download_TKPlotly_widget", "Download Plotly", icon("download"), style=" font-size: 15px; padding: 10px 18px; color: #fff; background-color: #337ab7; border-color: #2e6da4")),
-                                ),
+                                column(width = 2, downloadButton("download_TKPlotly_widget", "Download Plotly", icon("download"), style=" font-size: 15px; padding: 10px 18px; color: #fff; background-color: #337ab7; border-color: #2e6da4"))
+                                )
                                 ),
                                 br(),
                                 h3("An interactive datatable of the parameters selected in your models are below:"),
                                 box(title = "Selected TK Parameter Dataset", width = 12, collapsible = T,
-                                    DTOutput("TK_used_DT"),
+                                    DTOutput("TK_used_DT")
                                     ),
                                 br(),
                                 h4("Expand the below table to view sources"),
@@ -476,8 +498,8 @@ ui <- dashboardPage(
                                 ),
                                 h3("Explore the full toxicokinetic dataset below:"),
                                 box(title = "Full TK Dataset", width = 12, collapsible = T, collapsed = T,
-                                    DTOutput("Full_TK_Datatable"),
-                                    ),
+                                    DTOutput("Full_TK_Datatable")
+                                    )
                                 ),
                        tabPanel(title = "PBPK Models",
                                 p("This RShiny app allows users to run the optimized models from", a("Chou & Lin et al. (2019). Bayesian evaluation of a physiologically based pharmacokinetic (PBPK) model for perfluorooctane sulfonate (PFOS) to characterize the interspecies uncertainty between mice, rats, monkeys, and humans: Development and performance verification",
@@ -534,7 +556,10 @@ passive diffusion (all compartments) and active transport (kidney tissue (KT) an
                                     ", Species = ", tags$code("Mouse"),
                                     ", Sex = ", tags$code("Male"),
                                     ". If a PFAS is not listed here, the app will flag it during validation."),
-                                  DTOutput("massTransfer_info_table")
+                                  p("Edit parameter values below. The model will use these edited values when you click ",
+                                    tags$b("Run Simulation"), ". If no PFAS are listed, add a MassTransferPBPK row for Mouse/Male in the Experiment table."),
+                                  DTOutput("massTransfer_info_table"),
+                                  p("Unsupported selections will be flagged during validation or when you click Run.")
                                 )
                                 
                        )
@@ -1153,7 +1178,6 @@ server <- function(input, output, session) {
       select(PFAS, Species, Sex, variable, source, pubmedID, doi, Units) %>% 
       # concatenate variable with Units using parentheses
       mutate(variable = paste(variable, " (", Units, ")", sep = "")) %>%
-      #PubMedID = pubmed_id
       mutate(source = paste(source, " (PMID:", pubmedID , "; DOI:", doi, ")", sep = "")) %>% 
       select(-Units, - pubmedID, - doi) %>% 
       distinct() %>% 
@@ -1258,7 +1282,7 @@ server <- function(input, output, session) {
                           low = "red",
                           high = "#56B1F7",
                           space = "Lab",
-                          na.value = "grey50",
+                          na.value = "grey50"
       ) +
       
       # Labels and theme
@@ -1510,24 +1534,77 @@ server <- function(input, output, session) {
   
  
   ############################### PBPK Params Table #############################
-  ## Fischer Model data
-  output$massTransfer_info_table <- renderDT({
-    df <- if (length(fischer_supported_pfas)) {
-      data.frame(
-        Supported_PFAS = fischer_supported_pfas,
-        Species = fischer_supported_species,
-        Sex = fischer_supported_sex,
-        stringsAsFactors = FALSE
-      )
-    } else {
-      data.frame(
-        Note = "MassTransferPBPK parameter file not found or empty.",
-        Path = FISCHER_PARAM_PATH,
-        stringsAsFactors = FALSE
-      )
-    }
-    datatable(df, rownames = FALSE, options = list(dom = 't', pageLength = 50))
+  # --- Which PFAS are selected for MassTransferPBPK right now?
+  mass_transfer_selected_pfas <- reactive({
+    shiny::req(experiment_data())
+    experiment_data() %>%
+      dplyr::filter(Model_Type == "MassTransferPBPK") %>%
+      # current Fischer function is Mouse/Male only
+      dplyr::filter(Species == fischer_supported_species,
+                    Sex     == fischer_supported_sex) %>%
+      dplyr::pull(PFAS) %>%
+      unique()
   })
+  
+  # --- Base param rows from the Fischer file for those PFAS
+  mass_transfer_params_base <- reactive({
+    if (is.null(fischer_params)) return(NULL)
+    pf <- mass_transfer_selected_pfas()
+    if (!length(pf)) return(NULL)
+    df <- fischer_params %>% dplyr::filter(PFAS %in% pf)
+    if (!nrow(df)) return(NULL)
+    df
+  })
+  
+  # --- Editable copy the user can change
+  mass_transfer_params_edit <- reactiveVal(NULL)
+  
+  observeEvent(mass_transfer_params_base(), {
+    mass_transfer_params_edit(mass_transfer_params_base())
+  })
+  
+  current_supported_pfas <- reactive({
+    df <- mass_transfer_params_edit()
+    if (!is.null(df) && "PFAS" %in% names(df)) unique(df$PFAS) else fischer_supported_pfas
+  })
+  
+  output$massTransfer_info_table <- renderDT({
+    df <- mass_transfer_params_edit()
+    if (is.null(df) || !nrow(df)) {
+      return(DT::datatable(
+        data.frame(
+          Note = "Select at least one MassTransferPBPK row in the Experiment table (Mouse/Male only) to view/edit parameters."
+        ),
+        rownames = FALSE, options = list(dom = 't', pageLength = 5)
+      ))
+    }
+    
+    # lock the PFAS column from editing (we'll enforce it in the edit handler)
+    DT::datatable(
+      df,
+      rownames = FALSE,
+      editable = TRUE,
+      options = list(scrollX = TRUE, pageLength = 20)
+    )
+  })
+  
+  # Apply user edits back into the reactiveVal
+  observeEvent(input$massTransfer_info_table_cell_edit, {
+    info <- input$massTransfer_info_table_cell_edit
+    df <- isolate(mass_transfer_params_edit())
+    
+    colname <- colnames(df)[info$col + 1]  # DT is 0-indexed
+    if (identical(colname, "PFAS")) return()  # don't allow changing PFAS labels
+    
+    # Coerce to numeric if the target column is numeric
+    new_val <- info$value
+    if (is.numeric(df[[colname]])) {
+      new_val <- suppressWarnings(as.numeric(new_val))
+    }
+    df[info$row, colname] <- new_val
+    mass_transfer_params_edit(df)
+  })
+  
   
   
   # Reactive values for PBPK model parameters
@@ -1733,9 +1810,18 @@ server <- function(input, output, session) {
       }
       
       if (model_type == "MassTransferPBPK") {
-        # (your existing MassTransferPBPK checks here)
+        if (!is_mass_transfer_supported(pfas, species, sex)) {
+          return(paste0(
+            species, " ", sex, " ", pfas,
+            " (MassTransferPBPK allowed — PFAS: ", paste(fischer_supported_pfas, collapse = ", "),
+            "; Species: ", fischer_supported_species,
+            "; Sex: ", fischer_supported_sex, ")"
+          ))
+        }
         return(NULL)
       }
+      
+      
       
       # simple TK families (as you already had)...
       matching_rows <- params_data[
@@ -1871,7 +1957,7 @@ server <- function(input, output, session) {
         Model_Type = as.character(Model_Type)
       )
     
-    # Warn and exclude PBPK rows that are not PFOS
+    # Warn and exclude PBPK rows that are not PFOS (Chou and Lin model)
     bad_pbpk <- exp_data %>%
       dplyr::filter(Model_Type == "PBPK", PFAS != "PFOS")
     
@@ -1885,6 +1971,35 @@ server <- function(input, output, session) {
                                           "Interval_Hours","Exposure_Duration_Days","Time_Serum_Collected_hr",
                                           "Serum_Concentration_mg_L"))
     }
+    
+    # Warn & drop unsupported MassTransferPBPK rows before simulation
+    bad_mass <- exp_data %>%
+      dplyr::filter(Model_Type == "MassTransferPBPK") %>%
+      dplyr::mutate(.ok = is_mass_transfer_supported(PFAS, Species, Sex)) %>%
+      dplyr::filter(!.ok)
+    
+    if (nrow(bad_mass) > 0) {
+      combos <- bad_mass %>%
+        dplyr::mutate(label = paste0(Species, "/", Sex, "/", PFAS,
+                                     " — allowed PFAS: ", paste(fischer_supported_pfas, collapse = ", "),
+                                     "; species: ", fischer_supported_species,
+                                     "; sex: ", fischer_supported_sex)) %>%
+        dplyr::pull(label) %>% unique()
+      
+      shiny::showNotification(
+        paste0("MassTransferPBPK rows skipped: ", paste(combos, collapse = " • ")),
+        type = "warning", duration = 10
+      )
+      
+      exp_data <- dplyr::anti_join(
+        exp_data, bad_mass %>% dplyr::select(-.ok),
+        by = c("PFAS","Species","Sex","Model_Type","Dose_mg_per_kg",
+               "Interval_Hours","Exposure_Duration_Days","Time_Serum_Collected_hr",
+               "Serum_Concentration_mg_L")
+      )
+    }
+    
+    
     
     print(head(params_data()))
     
@@ -1905,6 +2020,15 @@ server <- function(input, output, session) {
       "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg",
       "Exposure_Duration_Days", "Interval_Hours", "Compartment", "Time", "Concentration"
     )
+    
+    # Build a custom parameter CSV for MassTransferPBPK if the user edited anything
+    custom_fischer_path <- NULL
+    mt_overrides <- mass_transfer_params_edit()
+    if (!is.null(mt_overrides) && nrow(mt_overrides)) {
+      custom_fischer_path <- tempfile(fileext = ".csv")
+      readr::write_csv(mt_overrides, custom_fischer_path)
+    }
+    
     
     # Run the simulation for each row in the joined data
     results <- lapply(seq_len(nrow(experiment_with_params)), function(i) {
@@ -1987,14 +2111,17 @@ server <- function(input, output, session) {
         
         # Fischer Model
       } else if (model_type == "MassTransferPBPK") {
-        # simulate_pfas returns one row per hour with columns: time_h, C_blood, C_liver, C_kidneys, C_gut, C_rest
+        
+        # decide which param file to use
+        param_file <- if (!is.null(custom_fischer_path)) custom_fischer_path else FISCHER_PARAM_PATH
+        
         sim_df <- tryCatch({
           Fischer_PBPK_mouse(
             PFAS = pfas,
             dose_mg_per_kg = dose,
             exposure_duration_days = exposure_duration_days,
             interval_hours = interval,
-            pfas_param_path = "Additional files/Datasets/Fischer/pfas_parameters.csv"
+            pfas_param_path = param_file  # <-- edited values flow through here
           )
         }, error = function(e) {
           message(paste("Fischer_PBPK_mouse error for Species:", species, pfas, "Message:", e$message))
@@ -2216,7 +2343,7 @@ server <- function(input, output, session) {
     
     p <- ggplot(measured_conc, aes(
       y = modeled_concentration, x = Serum_Concentration_mg_L,
-      color = PFAS, shape = Species,
+      color = PFAS, shape = Compartment,
       text = paste(
         "Chemical:", PFAS, "<br>",
         "Species:", Species, "<br>",
@@ -2239,7 +2366,7 @@ server <- function(input, output, session) {
         x = "Measured (mg/L)", y = "Modeled (mg/L)",
         color = "PFAS", shape = "Species"
       ) +
-      theme_minimal(base_size = 15)
+      theme_minimal(base_size = 15) +
       theme(legend.title = element_blank())
     
     session_store$scatterPlot <- ggplotly(p, tooltip = "text")
@@ -2361,8 +2488,8 @@ server <- function(input, output, session) {
       formatStyle(
         target = 'row',
         backgroundColor = styleEqual(
-          c("PBPK", "single-compartment", "two-compartment", "biphasic"), 
-          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD1")
+          c("PBPK", "single-compartment", "two-compartment", "biphasic", "MassTransferPBPK"), 
+          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD1","#5A8356")
         ),
         columns = "Model"  # Specifies to base coloring on the data_available column
       ) 

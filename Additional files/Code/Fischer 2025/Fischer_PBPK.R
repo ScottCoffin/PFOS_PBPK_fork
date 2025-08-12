@@ -39,7 +39,7 @@ Fischer_PBPK_mouse <- function(
   bw_kg <- bw_g / 1000
   dose_mg_each <- dose_mg_per_kg * bw_kg
   
-  # --- Physiological constants (as in your script) ---
+  # --- Physiological constants ---
   V_body <- 30
   Q_blood_liver      <- 0.021
   Q_blood_gut        <- 0.025
