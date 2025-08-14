@@ -1,0 +1,12 @@
+name: OEHHA_PFAS_PK_V0_1
+title: OEHHA_PFAS_PK_V0_1
+username: scott-coffin
+account: scott-coffin
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15207128
+bundleId: 10773181
+url: https://oehha.shinyapps.io/OEHHA_PFAS_PK_V0_1/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

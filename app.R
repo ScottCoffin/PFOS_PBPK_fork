@@ -395,7 +395,7 @@ ui <- dashboardPage(
   dashboardSidebar(
     # Logo Image
     tags$img(src="main_logo_drop.png", width = "75%", height = "75%", style = 'display: block; margin-left: auto; margin-right: auto;'),
-    tags$div("Logo Copyright OEHHA (2024)", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
+    tags$div("Logo Copyright OEHHA (2025)", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
     tags$div("Contact: Scott.Coffin@oehha.ca.gov", align = 'center', style = 'font-size: 12px; display: block; margin-left: auto; margin-right: auto;'), 
     uiOutput("deploymentDate"),
     br(),
