@@ -4,6 +4,7 @@ Interactive R/Shiny app for simulating and visualizing pharmacokinetics (PK) of 
 
 > Contact: **Scott.Coffin@oehha.ca.gov**; **NTES@oehha.ca.gov**
 
+[Live (dev version) ShinyApps.io Deployment](https://oehha.shinyapps.io/PFAS_TK/)
 ---
 
 ## Table of contents
