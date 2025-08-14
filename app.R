@@ -1150,12 +1150,6 @@ server <- function(input, output, session) {
   # Reactive value to store processed params table
   processed_params <- reactiveVal(NULL)
   
-  # Keep params_data in sync with the latest processed_params,
-  # even if the user never edits the table.
-  observeEvent(processed_params(), ignoreInit = TRUE, {
-    params_data(processed_params())   # allow 0-row to clear the table
-  })
-  
   
   # Observe changes in experiment_data() and update processed_params
   observeEvent(experiment_data(), {
@@ -1229,36 +1223,35 @@ server <- function(input, output, session) {
 
   # Render the RHandsontable using processed_params
   output$params_table <- renderRHandsontable({
-    shiny::req(processed_params())  # Ensure processed_params is available
-
-    # JavaScript renderer function to format numbers to 4 significant digits
+    pd <- params_data()
+    if (is.null(pd) || !nrow(pd)) {
+      # show a simple note instead of leaving the old table around
+      return(rhandsontable(data.frame(Note = "No simple-TK rows in the Experiment table."),
+                           readOnly = TRUE))
+    }
+    
+    # JS renderer unchanged if you want it:
     custom_renderer <- "
     function (instance, td, row, col, prop, value, cellProperties) {
       Handsontable.renderers.TextRenderer.apply(this, arguments);
-      if (!isNaN(value) && typeof value === 'number') {
-        td.innerHTML = value.toPrecision(4);
-      }
-    }
-  "
-
-    # Create rhandsontable
-    rhandsontable(processed_params()) %>%
-      hot_cols(strict = TRUE, allowInvalid = FALSE) %>%
-      hot_col("PFAS", readOnly = TRUE) %>%
-      hot_col("Species", readOnly = TRUE) %>%
-      hot_col("Sex", readOnly = TRUE) %>%
-     # hot_col("Route", readOnly = TRUE) %>%
-      hot_col("Model_Type", readOnly = TRUE) %>%
-      hot_cols(renderer = custom_renderer)  # Apply the custom renderer to all columns
+      if (!isNaN(value) && typeof value === 'number') td.innerHTML = Number(value).toPrecision(4);
+    }"
+    
+    rhandsontable(pd) %>%
+      hot_cols(strict = TRUE, allowInvalid = FALSE, renderer = custom_renderer) %>%
+      hot_col("PFAS",       readOnly = TRUE) %>%
+      hot_col("Species",    readOnly = TRUE) %>%
+      hot_col("Sex",        readOnly = TRUE) %>%
+      hot_col("Model_Type", readOnly = TRUE)
   })
-
+  
  
   # Observe changes in the rhandsontable and update reactive value
   observeEvent(input$params_table, {
-    updated_data <- hot_to_r(input$params_table)
+    upd <- hot_to_r(input$params_table)
     key_cols <- c("PFAS","Species","Sex","Model_Type")
-    updated_data <- dplyr::mutate(updated_data, dplyr::across(dplyr::all_of(key_cols), ~ as.character(.)))
-    params_data(updated_data)
+    if (nrow(upd)) upd <- dplyr::mutate(upd, dplyr::across(dplyr::all_of(key_cols), ~ as.character(.)))
+    params_data(upd)
   })
   
   
@@ -2263,42 +2256,81 @@ server <- function(input, output, session) {
 ############################################### Run Simulation ##########################################
 #####################################################################################################
   ## Helper for TK_params interactive table to update in real-time
+  # helper: merge defaults with existing edits but only for currently selected combos
   reconcile_params <- function(defaults, edits) {
     keys <- c("PFAS","Species","Sex","Model_Type")
     
-    to_char_keys <- function(df) {
+    to_char <- function(df) {
       if (is.null(df)) return(df)
-      # ensure key columns exist
-      missing <- setdiff(keys, names(df))
-      if (length(missing)) df[missing] <- NA_character_
-      df <- dplyr::mutate(df, dplyr::across(dplyr::all_of(keys), ~ as.character(as.vector(.))))
-      df
+      # ensure keys exist & are character
+      for (k in keys) if (!k %in% names(df)) df[[k]] <- NA_character_
+      dplyr::mutate(df, dplyr::across(dplyr::all_of(keys), ~ as.character(.)))
     }
     
-    defaults <- to_char_keys(defaults)
-    if (is.null(defaults) || !nrow(defaults)) return(defaults)
+    defaults <- to_char(defaults)
+    edits    <- to_char(edits)
     
-    edits <- to_char_keys(edits)
-    if (is.null(edits) || !nrow(edits)) return(defaults)
+    if (is.null(defaults) || !nrow(defaults)) return(defaults)  # nothing selected → empty
+    if (is.null(edits)    || !nrow(edits))    return(defaults)  # no edits yet → just defaults
     
-    # keep only columns common to both (plus the keys)
-    keep_from_edits <- intersect(names(edits), names(defaults))
-    edits <- dplyr::select(edits, dplyr::all_of(keep_from_edits))
+    # only keep columns that exist in defaults (plus keys)
+    edits <- dplyr::select(edits, dplyr::all_of(intersect(names(edits), names(defaults))))
     
     merged <- dplyr::left_join(defaults, edits, by = keys, suffix = c("", ".edit"))
     
-    # prefer edited values where present
+    # coalesce edited values over defaults
     nonkey <- setdiff(intersect(names(defaults), names(edits)), keys)
-    for (col in nonkey) {
-      e <- paste0(col, ".edit")
+    for (c in nonkey) {
+      e <- paste0(c, ".edit")
       if (e %in% names(merged)) {
-        merged[[col]] <- dplyr::coalesce(merged[[e]], merged[[col]])
+        merged[[c]] <- dplyr::coalesce(merged[[e]], merged[[c]])
         merged[[e]] <- NULL
       }
     }
     merged
   }
   
+  observeEvent(experiment_data(), {
+    ed <- drop_empty_experiment_rows(experiment_data())
+    
+    # simple-TK rows only (exclude PBPK)
+    exp_keys <- ed %>%
+      dplyr::filter(Model_Type != "PBPK") %>%
+      dplyr::distinct(PFAS, Species, Sex, Model_Type) %>%
+      dplyr::mutate(dplyr::across(c(PFAS,Species,Sex,Model_Type), as.character))
+    
+    if (!nrow(exp_keys)) {
+      processed_params(exp_keys)  # empty
+      params_data(exp_keys)       # <-- clear the handson table
+      return()
+    }
+    
+    # defaults from tk_params for current combos
+    defaults <- exp_keys %>%
+      dplyr::left_join(
+        tk_params %>% dplyr::mutate(dplyr::across(c(PFAS,Species,Sex), as.character)),
+        by = c("PFAS","Species","Sex")
+      ) %>%
+      dplyr::distinct() %>%
+      dplyr::mutate(
+        Half_Life_hr = dplyr::case_when(
+          is.na(Half_Life_hr) & !is.na(Clearance_L_per_kg_d) & !is.na(Volume_of_Distribution_L_per_kg) ~
+            (log(2) * Volume_of_Distribution_L_per_kg) / Clearance_L_per_kg_d,
+          TRUE ~ Half_Life_hr
+        ),
+        Volume_of_Distribution_L_per_kg = dplyr::case_when(
+          is.na(Volume_of_Distribution_L_per_kg) & !is.na(Clearance_L_per_kg_d) & !is.na(Half_Life_hr) ~
+            Clearance_L_per_kg_d / (log(2) / Half_Life_hr),
+          TRUE ~ Volume_of_Distribution_L_per_kg
+        )
+      ) %>%
+      dplyr::arrange(dplyr::desc(PFAS), Species, Sex)
+    
+    processed_params(defaults)
+    
+    # merge in any previous edits, but prune to current combos
+    params_data(reconcile_params(defaults, params_data()))
+  })
   
   
   
