@@ -2,7 +2,7 @@
 
 Interactive R/Shiny app for simulating and visualizing pharmacokinetics (PK) of PFAS across species, model types, and exposure scenarios. Built to support transparent parameterization, quick what-ifs, and reproducible downloads for analysis and review.
 
-> Contact: **Scott.Coffin@oehha.ca.gov**
+> Contact: **Scott.Coffin@oehha.ca.gov**; **NTES@oehha.ca.gov**
 
 ---
 
@@ -61,12 +61,14 @@ Interactive R/Shiny app for simulating and visualizing pharmacokinetics (PK) of 
 ## Models & Sources
 
 ### PBPK — PFOS (Chou & Lin, 2019)
+- **Model source**: [Chou & Lin 2019](https://linkinghub.elsevier.com/retrieve/pii/S016041201930203X).
 - **Species:** Mouse, Rat, Monkey, Human (**Male** in this app’s optimized sets).
 - **Route:** Oral (PFOS model is oral-only).
 - **Structure:** 4 organ compartments (Plasma, Liver, Kidney, Rest) with Bayesian-optimized parameters.
 - **Implementation:** `mrgsolve` models in `models/*.RDS`; parameters transformed out of log10 space at runtime.
 
-### MassTransferPBPK — Fischer 2025
+### MassTransferPBPK
+- **Model source:** [(Fischer et al. 2025)](https://doi.org/10.1021/acs.est.5c05473?urlappend=%3Fref%3DPDF&jav=VoR&rel=cite-as)
 - **Scope in app:** **Mouse / Male**.
 - **Mechanisms:** permeability–surface (passive) + active transport clearances; renal filtration/reabsorption; oral dosing via gut.
 - **Compartments exposed:** Blood/Plasma, Liver, Kidneys, Gut, Rest (e.g., `C_plasma`, `C_blood`, …).
@@ -168,8 +170,8 @@ shiny::runApp("app.R")
 
 ## Known Limitations / Roadmap
 
-- PBPK run path wired to PFOS (Chou & Lin 2019).
-- MassTransferPBPK currently limited to **Mouse / Male** (per available function/params).
+- PBPK run path wired to PFOS ([Chou & Lin 2019](https://linkinghub.elsevier.com/retrieve/pii/S016041201930203X)).
+- MassTransferPBPK currently limited to **Mouse / Male** (per available function/params) [(Fischer et al. 2025)](https://doi.org/10.1021/acs.est.5c05473?urlappend=%3Fref%3DPDF&jav=VoR&rel=cite-as).
 - Two-compartment and biphasic models require complete parameter sets (the app derives `t½` or `Vd` when possible).
 - Future: broader PBPK coverage, additional routes, expand MassTransferPBPK to other species/sex, richer validation messaging and tooltips.
 
@@ -219,8 +221,8 @@ Issues and PRs are welcome!
 
 If you use this app in your work, please cite:
 
-- **Chou & Lin (2019)** — Bayesian PBPK for PFOS across mouse, rat, monkey, human.  
-- **Fischer et al. (2025)** — Permeability/active-transport PBPK (“MassTransferPBPK”).  
+- [**Chou & Lin (2019)**](https://linkinghub.elsevier.com/retrieve/pii/S016041201930203X) — Bayesian PBPK for PFOS across mouse, rat, monkey, human.  
+- [**Fischer et al. (2025)**](https://doi.org/10.1021/acs.est.5c05473?urlappend=%3Fref%3DPDF&jav=VoR&rel=cite-as) — Permeability/active-transport PBPK (“MassTransferPBPK”).  
 - OEHHA curated TK datasets (literature sources are exposed in-app).
 
 Thanks to the maintainers of **mrgsolve**, **shiny**, **plotly**, and the R community.
@@ -229,14 +231,31 @@ Thanks to the maintainers of **mrgsolve**, **shiny**, **plotly**, and the R comm
 
 ## License
 
-Specify your license (e.g., MIT) and include a `LICENSE` file.
+MIT License
+
+Copyright (c) 2025 Office of Environmental Health Hazard Assessment
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ---
 
 ## FAQ
-
-**Q: My PFAS with lowercase letters doesn’t show in plots.**  
-A: The app uppercases and trims labels internally; if a CSV still fails to match, check spelling and trailing spaces. `HFPO-DA` is normalized to `GENX`.
 
 **Q: Why is PBPK skipped for non-PFOS PFAS?**  
 A: The PBPK run path is currently wired to the PFOS model set. Use a simple TK model or MassTransferPBPK (where supported) for other PFAS.
