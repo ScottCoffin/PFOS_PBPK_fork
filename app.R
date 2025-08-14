@@ -2920,6 +2920,9 @@ server <- function(input, output, session) {
     model_sel   <- if (is.null(input$flt_model)   || !length(input$flt_model))   unique(sim_results$Model_Type) else input$flt_model
     comp_sel    <- if (is.null(input$flt_comp)    || !length(input$flt_comp))    unique(sim_results$Compartment) else input$flt_comp
     
+    # norm_keys() (which uppercases PFAS)
+    pfas_sel <- normalize_pfas(pfas_sel)
+    
     num_keys <- c("Dose_mg_per_kg","Exposure_Duration_Days","Interval_Hours")
     
   
