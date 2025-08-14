@@ -63,6 +63,11 @@ human_best <- human_params$bestpar
 monkey_params <- readRDS("models/monkey_mcmc.rds")
 monkey_best <- monkey_params$bestpar
 
+################# PFOA Male Rat PBPK Model ##########
+##### Code and data from Fan et al. (2025) ####
+#load PBPK models for different PFAS
+
+
 ################# PFOS, PFOA, PFHxS Male Mouse Models ######
 ######--- code and data from Zhu et al. (2023) https://ehp.niehs.nih.gov/doi/10.1289/EHP11969
 ### their code is incomplete!!
@@ -95,21 +100,14 @@ fischer_supported_sex     <- "Male"
 
 # helper to validate a single MassTransferPBPK combo
 # tweak your check to use the reactive list
-# Put this near where you define fischer_supported_* so they’re in scope
+# MassTransferPBPK: Mouse/Male only + PFAS present in Fischer param file
 is_mass_transfer_supported <- function(pfas, species, sex,
                                        pfas_pool       = fischer_supported_pfas,
                                        allowed_species = fischer_supported_species,
                                        allowed_sex     = fischer_supported_sex) {
   n <- length(pfas)
-  if (is.null(pfas_pool) || !length(pfas_pool)) return(rep(FALSE, n))
-  
-  p_ok  <- !is.na(pfas)    & pfas    %in% pfas_pool
-  s_ok  <- !is.na(species) & species == allowed_species
-  sx_ok <- !is.na(sex)     & sex     == allowed_sex
-  
-  out <- p_ok & s_ok & sx_ok
-  out[is.na(out)] <- FALSE
-  out
+  if (length(pfas_pool) == 0) return(rep(FALSE, n))
+  (pfas %in% pfas_pool) & (species == allowed_species) & (sex == allowed_sex)
 }
 
 
@@ -123,10 +121,15 @@ model_type_colors <- c(
   "MassTransferPBPK"   = "#1E88E5"  # Fischer
 )
 
+## ---- Model preference (used everywhere) ----
+# Assumption: biphasic ≈ two-compartment (place it between 2- and 1-comp)
+model_preference <- c("MassTransferPBPK","PBPK","two-compartment","biphasic","single-compartment")
+pref_rank <- function(x) match(x, model_preference, nomatch = NA_integer_)
+
+
 # Compartment linetypes (stable, named)
 compartment_linetypes <- c(
   "Plasma"  = "solid",
-  "Central" = "solid",
   "Blood"   = "solid",
   "Liver"   = "longdash",
   "Kidneys" = "dotdash",
@@ -136,8 +139,7 @@ compartment_linetypes <- c(
 
 # Compartment colors if/when you want color by compartment
 compartment_colors <- c(
-  "Plasma"  = "#1f78b4",
-  "Central" = "#1f78b4",
+  "Plasma"  = "#1f38f7",
   "Blood"   = "#1f78b4",
   "Liver"   = "#33a02c",
   "Kidneys" = "#6a3d9a",
@@ -183,26 +185,28 @@ species_models <- list(
   Human = list(PFAS = "PFOS", Sex = "Male",model = humanpbpk, params = human_best, default_bw = 82.3),  # 82.3 kg for human
   Monkey = list(PFAS = "PFOS", Sex = "Male",model = monkeypbpk, params = monkey_best, default_bw = 3.5)  # 3.5 kg for monkey
 )
+ 
+# PFAS levels available  (ALPHABETICAL)
+pfas_levels <- sort(unique(c(as.character(tk_params$PFAS), fischer_supported_pfas)))
 
-# PFAS levels available
-pfas_levels <- unique(c(unique(tk_params$PFAS), fischer_supported_pfas))
 
 # Initialize editable table data with unrestricted input fields
 initial_table_data <- data.frame(
-  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX", "PFBS"),
+  PFAS = factor(c("PFBA", "PFBA", "PFHxA", "PFOA", "PFOA", "PFOS", "GENX", "PFBS", "PFOA"),
                 levels = pfas_levels), # ensure Fischer model in there too!
-  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat", "Mouse"),
+  Species = factor(c("Rat", "Mouse", "Mouse", "Rat", "Rat", "Rat", "Rat", "Mouse", "Mouse"),
                    levels = c("Rat", "Mouse", "Human", "Monkey")),
-  Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male", "Male")),
+  Sex = factor(c("Female", "Male", "Female", "Female", "Male", "Male", "Male", "Male", "Male")),
   # Route = factor(c("Intravenous", "Intragastric", "Oral", "Oral") ,
   #                levels = c("Intravenous", "Intragastric", "Intraperitoneal", "Oral", "Dermal")),
-  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "biphasic", "PBPK", "biphasic", "MassTransferPBPK")),
+  Model_Type = factor(c("single-compartment", "two-compartment", "single-compartment", "two-compartment", "biphasic", "PBPK", "biphasic", "MassTransferPBPK", "MassTransferPBPK"),
+                      levels = model_preference),
   #Body_Weight_kg = c(0.3, 0.025, 0.3, 0.3),
-  Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30, 30),
-  Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24, 24)),
-  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28, 65)),
-  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696, 1559)),
-  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA, 0.2899)),
+  Dose_mg_per_kg = c(175, 35, 62.5, 50, 30, 2.5, 30, 5, 5),
+  Interval_Hours = as.integer(c(24, 24, 24, 24, 24, 24, 24, 24, 24)),
+  Exposure_Duration_Days = as.integer(c(17, 28, 28, 28, 28, 28, 28, 30, 30)),
+  Time_Serum_Collected_hr = as.integer(c(432, 696, 696, 696, 696, 696, 696, 720, 720)),
+  Serum_Concentration_mg_L = as.numeric(c(4.44, 86, 3.1, 9.326, 51.65, 173.7, NA, 0.0895, 0.370)),
   stringsAsFactors = FALSE
 )
 
@@ -213,8 +217,6 @@ validation_data <- read_excel("Additional files/Datasets/general/validation_data
 original_types <- sapply(initial_table_data, class)
 original_levels <- lapply(initial_table_data, levels)
 
-# Reactive value to store experiment table data
-experiment_data <- reactiveVal(initial_table_data)
 
 ############# PK Model Functions ############
 # Function for single-compartment model
@@ -442,6 +444,13 @@ ui <- dashboardPage(
                     ),
                     h4("Once experimental conditions data are entered above, please proceed by clicking on the", strong("Model Parameters tab"), "on the left side of the app.")
                 )
+              ),
+              tabPanel(title = "Model Availability",
+                       fluidRow(
+                         box(title = "Searchable availability table", width = 12, status = "primary", solidHeader = TRUE,
+                             DTOutput("availability_table")
+                         )
+                       )
               )
       ),
       ############ Parameters Tab Item #####
@@ -515,6 +524,11 @@ ui <- dashboardPage(
                                   tags$img(src = "fig1.PNG", width = "70%", alt = "PBPK Framework")
                                 ),
                                 br(),
+                                
+                                h2("Customize PFOS PBPK Parameters"),
+                                p("The PFOS PBPK model is fully customizable (however not recommended)."),
+                                uiOutput("species_sex_params_grid"),  # Dynamically generate UI for each species' parameters
+                                
                                 br(),
                                 h3("PFOA PBPK Male Rat Model"),
                                 br(),
@@ -531,18 +545,28 @@ globulin, or liver-type fatty acid binding protein (L-FABP), PFOA binding occurs
 passive diffusion (all compartments) and active transport (kidney tissue (KT) and liver tissue (LT))."),
                                 br(),
                                 br(),
-                                p("Additional PBPK models are available for mice for PFOS, PFOA, and PFHxS via the oral, nasal, dermal, and IV pathways based on the models described in", a("Zhu et al. (2023). Exploring Route-Specific Pharmacokinetics of PFAS in Mice by Coupling In Vivo tests and Physiologically Based Toxicokinetic Models.", href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969")),
-                                h3("PFOS, PFOA, PFHxS Male Mouse Models"),
-                                tags$a(
-                                  href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969",
-                                  target = "_blank",
-                                  tags$img(src = "ehp11969_f1.jpg", width = "70%", alt = "PBPK Framework")
+                                
+                                # p("Additional PBPK models are available for mice for PFOS, PFOA, and PFHxS via the oral, nasal, dermal, and IV pathways based on the models described in", a("Zhu et al. (2023). Exploring Route-Specific Pharmacokinetics of PFAS in Mice by Coupling In Vivo tests and Physiologically Based Toxicokinetic Models.", href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969")),
+                                # h3("PFOS, PFOA, PFHxS Male Mouse Models"),
+                                # tags$a(
+                                #   href = "https://ehp.niehs.nih.gov/doi/10.1289/EHP11969",
+                                #   target = "_blank",
+                                #   tags$img(src = "ehp11969_f1.jpg", width = "70%", alt = "PBPK Framework")
+                                # ),
+                                # br(),
+                                # br(),
+                                box(
+                                  title = "MassTransferPBPK (Fischer 2025) — Schematic",
+                                  status = "warning", solidHeader = TRUE, width = 12,
+                                  uiOutput("fischer_schematic")
                                 ),
-                                br(),
-                                br(),
-                                h2("Customize PBPK Parameters"),
-                                p("The PFOS PBPK model is fully customizable (however not recommended)."),
-                                uiOutput("species_sex_params_grid"),  # Dynamically generate UI for each species' parameters
+                                
+                                box(
+                                  title = "MassTransferPBPK (Fischer 2025) — Model synopsis",
+                                  status = "warning", solidHeader = TRUE, width = 12,
+                                  uiOutput("fischer_synopsis")
+                                ),
+                                
                                 # Fishcer Model
                                 box(
                                   title = "MassTransferPBPK (Fischer 2025) — Model Information",
@@ -885,6 +909,23 @@ server <- function(input, output, session) {
       showNotification("Invalid data format. Missing required columns.", type = "error")
       return(NULL)
     }
+    
+    # After reading `new_data` from csv/xlsx, normalize types
+    num_keys <- c("Dose_mg_per_kg","Interval_Hours","Exposure_Duration_Days",
+                  "Time_Serum_Collected_hr","Serum_Concentration_mg_L")
+    
+    new_data <- new_data %>%
+      mutate(
+        PFAS       = trimws(as.character(PFAS)),
+        Species    = trimws(as.character(Species)),
+        Sex        = trimws(as.character(Sex)),
+        Model_Type = trimws(as.character(Model_Type))
+      ) %>%
+      mutate(across(all_of(num_keys), ~ suppressWarnings(as.numeric(.))))
+    
+    # remove any user-supplied columns that will collide with modeled outputs
+    new_data <- new_data %>% select(-any_of(c("Compartment", "Concentration", "Time")))
+    
     experiment_data(new_data)
     showNotification("Experiment data successfully updated.", type = "message")
     print("Experiment data successfully updated.")
@@ -894,7 +935,7 @@ server <- function(input, output, session) {
   output$experiment_table <- renderRHandsontable({
     rhandsontable(experiment_data()) %>% 
       hot_cols(strict = T,
-               allowInvalid = F)
+               allowInvalid = F) 
   })
   
   # Observe changes in the rhandsontable and update reactive value
@@ -935,9 +976,171 @@ server <- function(input, output, session) {
       }
     }
     
+    # prevent crashing with NA values
+    updated_data <- drop_empty_experiment_rows(updated_data)   
     # Update the reactive value with the new data
     experiment_data(updated_data)
   })
+  
+  # Notify only: show unsupported choices and a suggested alternative; DO NOT mutate the table
+  # Notify only: suggest a preferred model if (and only if) it's actually available for that combo
+  observeEvent(experiment_data(), {
+    ed <- drop_empty_experiment_rows(experiment_data())
+    if (!nrow(ed)) return()
+    
+    avail <- isolate(model_availability())
+    
+    # Best available model per PFAS/Species/Sex, using your preference order
+    best_tbl <- avail %>%
+      dplyr::filter(Available, Model_Type %in% model_preference) %>%
+      dplyr::group_by(PFAS, Species, Sex) %>%
+      dplyr::summarise(
+        best = Model_Type[which.min(pref_rank(Model_Type))],
+        .groups = "drop"
+      )
+    
+    # Join suggestions to the user’s rows; only message when the suggested model differs
+    nudges <- ed %>%
+      dplyr::left_join(best_tbl, by = c("PFAS","Species","Sex")) %>%
+      dplyr::filter(!is.na(best), best != Model_Type) %>%
+      dplyr::mutate(msg = sprintf("%s/%s/%s — consider %s (chosen: %s)",
+                                  Species, Sex, PFAS, best, Model_Type)) %>%
+      dplyr::pull(msg)
+    
+    if (length(nudges)) {
+      showNotification(
+        paste("More preferred model available:", paste(nudges, collapse = " • ")),
+        type = "message", duration = 8
+      )
+    }
+  })
+  
+  
+  
+  
+  ########################### Model Availability #########
+  # Make a full PFAS × Species × Sex grid and compute availability per model
+  model_availability <- reactive({
+    combos <- expand.grid(
+      PFAS    = as.character(pfas_levels),
+      Species = c("Rat","Mouse","Human","Monkey"),
+      Sex     = c("Male","Female"),
+      stringsAsFactors = FALSE
+    )
+    
+    combos$`MassTransferPBPK` <- is_mass_transfer_supported(combos$PFAS, combos$Species, combos$Sex)
+    combos$PBPK               <- is_pbpk_supported(combos$PFAS, combos$Species, combos$Sex)
+    combos$`two-compartment`  <- is_simple_supported(combos$PFAS, combos$Species, combos$Sex, "two-compartment")
+    combos$`single-compartment` <- is_simple_supported(combos$PFAS, combos$Species, combos$Sex, "single-compartment")
+    # We intentionally do NOT rank "biphasic" because your stated order excludes it.
+    # If you want to show availability only:
+    combos$biphasic <- is_simple_supported(combos$PFAS, combos$Species, combos$Sex, "two-compartment") &
+      !is.na(tk_params$K_alpha)[match(paste(combos$PFAS,combos$Species,combos$Sex,sep="|"),
+                                      paste(tk_params$PFAS,tk_params$Species,tk_params$Sex,sep="|"))]
+    
+    long <- combos |>
+      tidyr::pivot_longer(
+        cols = c("MassTransferPBPK","PBPK","two-compartment","single-compartment","biphasic"),
+        names_to = "Model_Type", values_to = "Available"
+      )
+    
+    # Preferred = best-ranked among the four in model_preference only
+    long <- long |>
+      dplyr::group_by(PFAS, Species, Sex) |>
+      dplyr::mutate(
+        .best_rank = if (any(Available & Model_Type %in% model_preference)) {
+          min(pref_rank(Model_Type[Available & Model_Type %in% model_preference]), na.rm = TRUE)
+        } else NA_real_,
+        Preferred = Available & (pref_rank(Model_Type) == .best_rank) & (Model_Type %in% model_preference)
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::select(-.best_rank)
+    
+    long
+  })
+  
+  
+  
+  ### availability plotly ##
+  output$availability_matrix_plot <- renderPlotly({
+    df <- model_availability()
+    shiny::req(nrow(df) > 0)
+    
+    # order PFAS for readability
+    df <- df %>% arrange(PFAS)
+    df$Model_Type <- factor(df$Model_Type, levels = model_preference)
+    
+    # base heat (available vs not)
+    base <- ggplot(df, aes(x = Model_Type,
+                           y = paste(PFAS, Sex, Species, sep=" • "),
+                           fill = ifelse(Available, "yes", "no"),
+                           text = paste0(
+                             "PFAS: ", PFAS, "<br>",
+                             "Species: ", Species, " &nbsp; Sex: ", Sex, "<br>",
+                             "Model: ", Model_Type, "<br>",
+                             "Available: ", ifelse(Available,"Yes","No"),
+                             ifelse(Preferred & Available, "<br><b>Preferred ✅</b>", "")
+                           ))) +
+      geom_tile(color = "white", height = 0.9) +
+      scale_fill_manual(values = c("no" = "#e9ecef", "yes" = "#a9dfbf"), guide = "none") +
+      labs(x = NULL, y = "PFAS • Sex • Species") +
+      theme_minimal(base_size = 13) +
+      theme(axis.text.x = element_text(angle = 40, hjust = 1))
+    
+    stars <- df %>% dplyr::filter(Preferred & Available)
+    p <- base + geom_point(data = stars,
+                           aes(x = Model_Type, y = paste(PFAS, Sex, Species, sep=" • ")),
+                           shape = 8, size = 3, inherit.aes = FALSE)
+    
+    ggplotly(p, tooltip = "text")
+  })
+  
+  ### availability DT ###
+  output$availability_table <- renderDT({
+    df <- model_availability()
+    shiny::req(nrow(df) > 0)
+    
+    tbl <- df %>%
+      dplyr::group_by(PFAS, Species, Sex) %>%
+      dplyr::summarise(
+        Preferred = {
+          avail <- Model_Type[Available]
+          if (length(avail)) avail[which.min(pref_rank(avail))] else NA_character_
+        },
+        Available_Models = {
+          avail <- Model_Type[Available]
+          if (length(avail)) paste(avail[order(pref_rank(avail))], collapse = "  •  ")
+          else "—"
+        },
+        .groups = "drop"
+      ) %>%
+      dplyr::arrange(PFAS, Species, Sex) %>% 
+      mutate(PFAS = as.factor(PFAS),
+             Species = as.factor(Species),
+             Sex = as.factor(Sex))
+    
+    # pretty badges using your model_type_colors
+    badge_for <- function(label) {
+      if (is.na(label) || label == "—") return("—")
+      col <- unname(model_type_colors[label])
+      sprintf('<span style="background:%s;color:#fff;border-radius:10px;padding:2px 8px; margin-right:4px; font-size:12px;">%s</span>', col, label)
+    }
+    tbl$Preferred <- vapply(tbl$Preferred, badge_for, character(1))
+    tbl$Available_Models <- vapply(tbl$Available_Models, function(s) {
+      if (s == "—") return("—")
+      labs <- strsplit(s, "  •  ", fixed = TRUE)[[1]]
+      paste(vapply(labs, badge_for, character(1)), collapse = " ")
+    }, character(1))
+    
+    datatable(tbl, escape = FALSE, rownames = FALSE,
+              filter = "top",
+              options = list(pageLength=20, scrollX=TRUE,
+                             dom='Blrtip', buttons=list(I('colvis'),'copy')))
+  })
+  
+  
+  
+  
   
   ########################### Parameters Data Table ############
   # initalize input params
@@ -947,49 +1150,55 @@ server <- function(input, output, session) {
   # Reactive value to store processed params table
   processed_params <- reactiveVal(NULL)
   
+  # Keep params_data in sync with the latest processed_params,
+  # even if the user never edits the table.
+  observeEvent(processed_params(), ignoreInit = TRUE, {
+    params_data(processed_params())   # allow 0-row to clear the table
+  })
+  
+  
   # Observe changes in experiment_data() and update processed_params
   observeEvent(experiment_data(), {
-
     shiny::req(experiment_data())
-    # Filter experimental data to non-PBPK rows
+    
     exp_data <- experiment_data() %>%
-      filter(Model_Type != "PBPK") %>%  # Exclude PBPK rows for this table
-      distinct(PFAS, Species, Sex,
-               #Route,
-               Model_Type) %>%
-      mutate(selected = "selected")
-
-    # Perform the join with tk_params
+      dplyr::filter(Model_Type != "PBPK") %>%
+      dplyr::distinct(PFAS, Species, Sex, Model_Type) %>%
+      dplyr::mutate(dplyr::across(c(PFAS,Species,Sex,Model_Type), as.character))
+    
+    if (!nrow(exp_data)) {
+      processed_params(exp_data)
+      params_data(exp_data)   # clears the table
+      return()
+    }
+    
     params_processed <- exp_data %>%
-      left_join(tk_params, by = c("PFAS", "Species", "Sex"
-                                  #, "Route"
-                                  )
-                ) %>%
-      filter(selected == "selected") %>%  # Keep only selected rows
-      select(-selected) %>%  # Drop the helper column
-      distinct() %>%
-      #calculate half-life from Clearance and Volume of Distribution if value is missing
-      mutate(
-        Half_Life_hr = case_when(
-        is.na(Half_Life_hr) & !is.na(Clearance_L_per_kg_d) & !is.na(Volume_of_Distribution_L_per_kg) ~
-          (log(2) * Volume_of_Distribution_L_per_kg) / Clearance_L_per_kg_d, #Ke = Vd / Cl
-        T ~ Half_Life_hr
+      dplyr::left_join(
+        tk_params %>% dplyr::mutate(dplyr::across(c(PFAS,Species,Sex), as.character)),
+        by = c("PFAS","Species","Sex")
+      ) %>%
+      dplyr::distinct() %>%
+      dplyr::mutate(
+        Half_Life_hr = dplyr::case_when(
+          is.na(Half_Life_hr) & !is.na(Clearance_L_per_kg_d) & !is.na(Volume_of_Distribution_L_per_kg) ~
+            (log(2) * Volume_of_Distribution_L_per_kg) / Clearance_L_per_kg_d,
+          TRUE ~ Half_Life_hr
         ),
-        Volume_of_Distribution_L_per_kg = case_when(
+        Volume_of_Distribution_L_per_kg = dplyr::case_when(
           is.na(Volume_of_Distribution_L_per_kg) & !is.na(Clearance_L_per_kg_d) & !is.na(Half_Life_hr) ~
-            Clearance_L_per_kg_d / (log(2) / Half_Life_hr), #Vd  = Ke / Cl
-          T ~ Volume_of_Distribution_L_per_kg
-          )
-      ) %>% 
-      arrange(desc(PFAS), Species, Sex)  # Arrange for consistent display
-
-    # Debugging: Inspect the processed data
-    print("Processed params table:")
-    print(params_processed)
-
-    # Update reactive value
+            Clearance_L_per_kg_d / (log(2) / Half_Life_hr),
+          TRUE ~ Volume_of_Distribution_L_per_kg
+        )
+      ) %>%
+      dplyr::arrange(dplyr::desc(PFAS), Species, Sex)
+    
+    # prune to current rows but keep user edits that still match
+    params_data(reconcile_params(params_processed, params_data()))
+    
     processed_params(params_processed)
   })
+  
+  
 
   # Upload and update params_data (model parameters for species/sex combinations)
   observeEvent(input$upload_params_data, {
@@ -1046,12 +1255,12 @@ server <- function(input, output, session) {
  
   # Observe changes in the rhandsontable and update reactive value
   observeEvent(input$params_table, {
-    # Get the updated data from the input
     updated_data <- hot_to_r(input$params_table)
-
-    # Update the reactive value with the new data
+    key_cols <- c("PFAS","Species","Sex","Model_Type")
+    updated_data <- dplyr::mutate(updated_data, dplyr::across(dplyr::all_of(key_cols), ~ as.character(.)))
     params_data(updated_data)
   })
+  
   
   # create reactive df used in TK plotly and DT
   mismatch_data_norm_reactive <- reactive({
@@ -1741,8 +1950,8 @@ server <- function(input, output, session) {
 
   # Render and update species/sex-specific parameter tables
   observe({
-    for (sp in unique(experiment_data()$Species)) {
-      for (sx in unique(experiment_data()$Sex)) {
+    for (sp in na.omit(unique(experiment_data()$Species))) {
+      for (sx in na.omit(unique(experiment_data()$Sex))) {
         local({
           species <- sp
           sex <- sx
@@ -1782,26 +1991,40 @@ server <- function(input, output, session) {
   
 ################ error output #####
   validate_params <- function(experiment_data, params_data, reactive_params, required_params) {
-    if (is.null(experiment_data) || nrow(experiment_data) == 0) return("No experiment data available.")
-    if (is.null(params_data) || nrow(params_data) == 0) return("No parameters data available. Please upload or provide parameter data to run the simulation.")
+    if (is.null(experiment_data) || nrow(experiment_data) == 0) {
+      return("No experiment data available.")
+    }
+    if (is.null(params_data) || nrow(params_data) == 0) {
+      return("No parameters data available. Please upload or provide parameter data to run the simulation.")
+    }
     
     experiment_data[] <- lapply(experiment_data, function(x) if (is.factor(x)) as.character(x) else x)
     params_data[]     <- lapply(params_data,     function(x) if (is.factor(x)) as.character(x) else x)
     
+    # drop rows where ALL key fields are blank (belt-and-suspenders)
+    req_keys <- c("Model_Type","PFAS","Species","Sex")
+    experiment_data <- experiment_data %>%
+      dplyr::filter(!if_all(all_of(req_keys), ~ is.na(.) | . == ""))
+    
+    safe_eq <- function(a, b) isTRUE(a == b)
+    `%||%`   <- function(x, y) if (is.null(x)) y else x
+    
     missing_rows <- lapply(seq_len(nrow(experiment_data)), function(row_idx) {
       row <- experiment_data[row_idx, ]
-      model_type <- row$Model_Type
-      pfas <- row$PFAS
-      species <- row$Species
-      sex <- row$Sex
-      required <- required_params[[model_type]]
       
-      if (model_type == "PBPK") {
-        # PBPK (Chou & Lin 2019) supports PFOS only
+      # skip rows with any missing key (user is still editing)
+      if (any(is.na(row[req_keys])) || any(row[req_keys] == "")) return(NULL)
+      
+      model_type <- row$Model_Type
+      pfas  <- row$PFAS
+      species <- row$Species
+      sex     <- row$Sex
+      required <- required_params[[model_type]] %||% character(0)
+      
+      if (safe_eq(model_type, "PBPK")) {
         if (!identical(pfas, "PFOS")) {
           return(paste(species, sex, pfas, "(PBPK supports PFOS only — choose PFOS or change model type)"))
         }
-        # must also have mrgsolve params present
         param_table <- reactive_params[[paste0(species, "_", sex)]]
         if (is.null(param_table) || !pfas %in% colnames(param_table)) {
           return(paste(species, sex, pfas, "(PBPK parameter table missing for this species/sex)"))
@@ -1809,7 +2032,7 @@ server <- function(input, output, session) {
         return(NULL)
       }
       
-      if (model_type == "MassTransferPBPK") {
+      if (safe_eq(model_type, "MassTransferPBPK")) {
         if (!is_mass_transfer_supported(pfas, species, sex)) {
           return(paste0(
             species, " ", sex, " ", pfas,
@@ -1821,9 +2044,7 @@ server <- function(input, output, session) {
         return(NULL)
       }
       
-      
-      
-      # simple TK families (as you already had)...
+      # simple TK families
       matching_rows <- params_data[
         params_data$PFAS == pfas &
           params_data$Species == species &
@@ -1849,6 +2070,7 @@ server <- function(input, output, session) {
   }
   
   
+  
 
   # Define dynamic required parameters
   required_params <- reactive({
@@ -1868,12 +2090,14 @@ server <- function(input, output, session) {
   # Update validation message dynamically
   observeEvent(list(experiment_data(), params_data()), {
     print("experiment_data or params_data changed")
-    shiny::req(experiment_data(), params_data())
+    ed <- drop_empty_experiment_rows(experiment_data())
+    pd <- params_data()
+    
     
     # Compute validation result
     validation_result <- validate_params(
-      experiment_data = experiment_data(),
-      params_data = params_data(),
+      experiment_data = ed,
+      params_data = pd,
       reactive_params = reactive_params,
       required_params = required_params()  # Use dynamic required_params
     )
@@ -1896,11 +2120,64 @@ server <- function(input, output, session) {
     }
   })
   
+  #### Notifier to use preferred model
+  # # Notify only: suggest a preferred model if (and only if) it's actually available for that combo
+  # observeEvent(experiment_data(), {
+  #   ed <- drop_empty_experiment_rows(experiment_data())
+  #   if (!nrow(ed)) return()
+  #   
+  #   avail <- isolate(model_availability())
+  #   
+  #   # Best available model per PFAS/Species/Sex, using your preference order
+  #   best_tbl <- avail %>%
+  #     dplyr::filter(Available, Model_Type %in% model_preference) %>%
+  #     dplyr::group_by(PFAS, Species, Sex) %>%
+  #     dplyr::summarise(
+  #       best = Model_Type[which.min(pref_rank(Model_Type))],
+  #       .groups = "drop"
+  #     )
+  #   
+  #   # Join suggestions to the user’s rows; only message when the suggested model differs
+  #   nudges <- ed %>%
+  #     dplyr::left_join(best_tbl, by = c("PFAS","Species","Sex")) %>%
+  #     dplyr::filter(!is.na(best), best != Model_Type) %>%
+  #     dplyr::mutate(msg = sprintf("%s/%s/%s — consider %s (chosen: %s)",
+  #                                 Species, Sex, PFAS, best, Model_Type)) %>%
+  #     dplyr::pull(msg)
+  #   
+  #   if (length(nudges)) {
+  #     showNotification(
+  #       paste("More preferred model available:", paste(nudges, collapse = " • ")),
+  #       type = "message", duration = 8
+  #     )
+  #   }
+  # })
+  
+  
+  
   
   # Render the validation message in the UI
   output$params_check_message <- renderUI({
-    shiny::req(validation_message())
-    validation_message()
+    ed <- drop_empty_experiment_rows(experiment_data())
+    if (!nrow(ed)) return(NULL)
+    
+    chosen_ok <- with(ed, dplyr::case_when(
+      Model_Type == "MassTransferPBPK" ~ is_mass_transfer_supported(PFAS, Species, Sex),
+      Model_Type == "PBPK"             ~ is_pbpk_supported(PFAS, Species, Sex),
+      Model_Type == "two-compartment"  ~ is_simple_supported(PFAS, Species, Sex, "two-compartment"),
+      Model_Type == "single-compartment" ~ is_simple_supported(PFAS, Species, Sex, "single-compartment"),
+      Model_Type == "biphasic"         ~ isTRUE(is_simple_supported(PFAS, Species, Sex, "two-compartment")), # conservative
+      TRUE ~ FALSE
+    ))
+    
+    if (all(chosen_ok, na.rm = TRUE)) {
+      tags$p(HTML("All selected models are supported for those PFAS/species/sex."), style = "color: green; font-size: 16px; text-align: center;")
+    } else {
+      bad <- ed[!chosen_ok %in% TRUE, c("PFAS","Species","Sex","Model_Type")]
+      msg <- paste(apply(bad, 1, paste, collapse = " | "), collapse = "<br>")
+      tags$p(HTML(paste0("Unsupported selections (won't run):<br>", msg)),
+             style = "color: red; font-size: 16px; text-align: center;")
+    }
   })
   
     # Ensure the output is updated even when the tab is not active
@@ -1909,43 +2186,175 @@ server <- function(input, output, session) {
   
   ### Observe and Force UI Re-rendering on Data Changes
   observeEvent(list(experiment_data(), params_data()), {
-    print("Triggered re-rendering due to data change")  # Debugging message
     output$params_check_message <- renderUI({
-      shiny::req(experiment_data(), params_data())
-      
-      # Validate parameters
+      ed <- drop_empty_experiment_rows(experiment_data())
+      pd <- params_data()
       validation_result <- validate_params(
-        experiment_data = experiment_data(),
-        params_data = params_data(),
+        experiment_data = ed,
+        params_data     = pd,
         reactive_params = reactive_params,
-        required_params = required_params()  # Use dynamic required_params
+        required_params = required_params()
       )
-      
-      # Display the appropriate message
       if (is.null(validation_result)) {
-        tags$p(
-          HTML("All parameters are sufficiently available to run the simulation! <br> Please hit `Run Simulation` button below to proceed."),
-          style = "color: green; font-size: 20px; text-align: center;"
-        )
+        tags$p(HTML("All parameters are sufficiently available to run the simulation! <br> Please hit `Run Simulation` button below to proceed."),
+               style = "color: green; font-size: 20px; text-align: center;")
       } else {
-        tags$p(
-          HTML(validation_result),  # Use HTML to interpret line breaks
-          style = "color: red; font-size: 20px; text-align: center;"
-        )
+        tags$p(HTML(validation_result),
+               style = "color: red; font-size: 20px; text-align: center;")
       }
     })
+  })
+  
+  
+  
+  # Show the Fischer schematic
+  output$fischer_schematic <- renderUI({
+    # If you have permission to host a local copy, save it as: www/fischer2025_fig1.png
+    # Otherwise, leave only the link (the <img> can be commented out).
+    tags$figure(
+      # Link to the article
+      tags$a(
+        href   = "https://doi.org/10.1021/acs.est.5c05473",
+        target = "_blank",
+        # Show a local image
+        tags$img(
+          src  = "acsest5c05473.JPG",  
+          alt  = "Permeability-/transport-limited PBPK schematic with Blood/Plasma, Liver, Kidneys, Gut, and Rest compartments connected by passive PS and active transport pathways.",
+          width = "80%"
+        )
+      ),
+      tags$figcaption(
+        HTML("Figure 1. Schematic of the MassTransferPBPK framework (adapted from Fischer et&nbsp;al., 2025, <i>Environmental Science &amp; Technology</i>, DOI: 10.1021/acs.est.5c05473).")
+      )
+    )
+  })
+  
+  output$fischer_synopsis <- renderUI({
+    # This uses your already-loaded `fischer_supported_pfas` vector
+    pfas_list <- if (length(fischer_supported_pfas)) {
+      paste(sort(fischer_supported_pfas), collapse = ", ")
+    } else {
+      "—"
+    }
+    
+    HTML(paste0(
+      "<ul style='margin-left:1em;'>",
+      "<li><b>Model type:</b> permeability-/transport-limited PBPK (‘MassTransferPBPK’). ",
+      "Compartments implemented in the app: Blood/Plasma, Liver, Kidneys, Gut, and Rest.</li>",
+      "<li><b>Processes:</b> passive diffusion (permeability–surface terms) and active transport clearances ",
+      "in relevant tissues; renal filtration and potential tubular reabsorption are represented; ",
+      "oral dosing enters via gut; systemic mixing represented in blood/plasma.</li>",
+      "<li><b>Inputs (in this app):</b> PFAS, dose (mg/kg), dosing interval (h), exposure duration (days). ",
+      "Supported species/sex: Mouse (Male). Parameters are read from the Fischer parameter file and ",
+      "can be edited in the table above.</li>",
+      "<li><b>Outputs returned by <code>Fischer_PBPK_mouse()</code>:</b> Time series with ",
+      "<code>time_h</code> (hours) and concentrations (mg/L) for <code>C_plasma</code>, ",
+      "<code>C_blood</code>, <code>C_liver</code>, <code>C_kidneys</code>, <code>C_gut</code>, and <code>C_rest</code>. ",
+      "The app maps these to ‘Plasma’, ‘Blood’, ‘Liver’, ‘Kidneys’, ‘Gut’, and ‘Rest’.</li>",
+      "<li><b>Supported PFAS in your current parameter file:</b> ", pfas_list, ".</li>",
+      "<li><b>Citation:</b> Fischer et&nbsp;al., 2025, <i>Environmental Science &amp; Technology</i>, ",
+      "DOI: <a target='_blank' href='https://doi.org/10.1021/acs.est.5c05473'>10.1021/acs.est.5c05473</a>.</li>",
+      "</ul>"
+    ))
   })
   
 
 #########################################################################################################
 ############################################### Run Simulation ##########################################
 #####################################################################################################
+  ## Helper for TK_params interactive table to update in real-time
+  reconcile_params <- function(defaults, edits) {
+    keys <- c("PFAS","Species","Sex","Model_Type")
+    
+    to_char_keys <- function(df) {
+      if (is.null(df)) return(df)
+      # ensure key columns exist
+      missing <- setdiff(keys, names(df))
+      if (length(missing)) df[missing] <- NA_character_
+      df <- dplyr::mutate(df, dplyr::across(dplyr::all_of(keys), ~ as.character(as.vector(.))))
+      df
+    }
+    
+    defaults <- to_char_keys(defaults)
+    if (is.null(defaults) || !nrow(defaults)) return(defaults)
+    
+    edits <- to_char_keys(edits)
+    if (is.null(edits) || !nrow(edits)) return(defaults)
+    
+    # keep only columns common to both (plus the keys)
+    keep_from_edits <- intersect(names(edits), names(defaults))
+    edits <- dplyr::select(edits, dplyr::all_of(keep_from_edits))
+    
+    merged <- dplyr::left_join(defaults, edits, by = keys, suffix = c("", ".edit"))
+    
+    # prefer edited values where present
+    nonkey <- setdiff(intersect(names(defaults), names(edits)), keys)
+    for (col in nonkey) {
+      e <- paste0(col, ".edit")
+      if (e %in% names(merged)) {
+        merged[[col]] <- dplyr::coalesce(merged[[e]], merged[[col]])
+        merged[[e]] <- NULL
+      }
+    }
+    merged
+  }
+  
+  
+  
+  
+  #### Helper for experiment table to handle NAs without crashing ###
+  `%||%` <- function(x, y) if (is.null(x)) y else x
+  
+  drop_empty_experiment_rows <- function(df) {
+    req <- c("PFAS","Species","Sex","Model_Type")
+    if (!all(req %in% names(df))) return(df)
+    df %>%
+      dplyr::mutate(across(all_of(req), ~ if (is.factor(.)) as.character(.) else .)) %>%
+      dplyr::filter(!if_all(all_of(req), ~ is.na(.) | . == "")) %>%  # remove rows with all 4 keys blank
+      dplyr::mutate(
+        PFAS       = factor(PFAS, levels = pfas_levels),
+        Species    = factor(Species, levels = c("Rat","Mouse","Human","Monkey")),
+        Sex        = factor(Sex, levels = c("Female","Male")),
+        Model_Type = factor(Model_Type, levels = model_preference)
+      )
+  }
+  
+  
+  
+  #### Helper Function ####
+  guess_time_days <- function(df, exposure_duration_days) {
+    # prefer explicit hour columns
+    if ("time_h" %in% names(df))      return(df$time_h / 24)
+    if ("time_hours" %in% names(df))  return(df$time_hours / 24)
+    if ("t_hr" %in% names(df))        return(df$t_hr / 24)
+    # fallbacks
+    if ("time" %in% names(df)) {
+      t <- df$time
+      # heuristic: if it runs far beyond exposure days, assume hours
+      if (max(t, na.rm = TRUE) > exposure_duration_days * 1.5) return(t / 24)
+      return(t)
+    }
+    if ("t" %in% names(df)) {
+      tt <- df$t
+      if (max(tt, na.rm = TRUE) > exposure_duration_days * 1.5) return(tt / 24)
+      return(tt)
+    }
+    rep(NA_real_, nrow(df))
+  }
+  
   
   # 1) Make sure simulate_pfas() is sourced/available above this server code
   # source("R/simulate_pfas.R")  # if you saved it there
   
   simulation_results <- eventReactive(input$run, {
-    shiny::req(params_data(), experiment_data())
+    shiny::req(experiment_data())
+    
+    # Prefer the edited table, but fall back to the processed defaults
+    params <- params_data()
+    if (is.null(params) || !nrow(params)) {
+      params <- processed_params()
+    }
+    shiny::req(params)
     
     print("Running simulation...")
     
@@ -2137,22 +2546,40 @@ server <- function(input, output, session) {
           ))
         }
         
-        # Pivot to long so each compartment appears as its own row
-        # (Compartment ∈ Blood, Liver, Kidneys, Gut, Rest)
+        # --- guarantee a plasma column ---
+        if (!"C_plasma" %in% names(sim_df)) {
+          if ("Plasma" %in% names(sim_df)) {
+            sim_df$C_plasma <- sim_df$Plasma
+          } else if ("C_blood" %in% names(sim_df)) {
+            # "central == plasma" per app decision
+            sim_df$C_plasma <- sim_df$C_blood
+          } else {
+            sim_df$C_plasma <- NA_real_
+          }
+        }
+        
+        # ensure a days column for joining/plotting
+        sim_df$Time_days <- guess_time_days(sim_df, exposure_duration_days)
+        
+        keep_cols <- intersect(
+          c("C_blood", "C_plasma", "C_liver", "C_kidneys", "C_gut", "C_rest"),
+          names(sim_df)
+        )
+        
         long <- tidyr::pivot_longer(
           sim_df,
-          cols = c("C_blood", "C_liver", "C_kidneys", "C_gut", "C_rest"),
-          names_to = "Compartment",
+          cols      = keep_cols,
+          names_to  = "Compartment",
           values_to = "Concentration"
         )
         
         long$Compartment <- dplyr::recode(
           long$Compartment,
-          C_blood = "Blood", C_liver = "Liver", C_kidneys = "Kidneys",
-          C_gut = "Gut", C_rest = "Rest"
+          C_blood = "Blood", C_plasma = "Plasma", C_liver = "Liver",
+          C_kidneys = "Kidneys", C_gut = "Gut", C_rest = "Rest",
+          .default = long$Compartment
         )
         
-        # Time in days (your app uses days on the x-axis)
         out <- dplyr::tibble(
           Species = species,
           PFAS = pfas,
@@ -2162,14 +2589,14 @@ server <- function(input, output, session) {
           Exposure_Duration_Days = exposure_duration_days,
           Interval_Hours = interval,
           Compartment = long$Compartment,
-          Time = long$time_h / 24,
+          Time = long$Time_days,                  # <- use robust days column
           Concentration = long$Concentration
         )
         
         out
         
       } else {
-        # ----- Your simplified PK branches (unchanged) -----
+        # ----- simplified PK branches -----
         ke <- log(2) / row$Half_Life_hr
         ka <-  row$Absorption_Coefficient_unitless
         vd <-  row$Volume_of_Distribution_L_per_kg
@@ -2199,7 +2626,7 @@ server <- function(input, output, session) {
           Dose_mg_per_kg = dose,
           Exposure_Duration_Days = exposure_duration_days,
           Interval_Hours = interval,
-          Compartment = "Central",
+          Compartment = "Plasma",
           Time = times / 24,
           Concentration = conc,
           stringsAsFactors = FALSE
@@ -2219,6 +2646,144 @@ server <- function(input, output, session) {
   
 
   ###################################################### Results ###########################################  
+  ####### HELPERS #####
+  # PBPK (Chou & Lin) availability = PFOS only; species/sex must match your species_models list
+  # PBPK: supports PFOS-only and sex/species exactly as defined in species_models
+  is_pbpk_supported <- function(pfas, species, sex) {
+    n <- length(pfas)
+    out <- logical(n)
+    sm_names <- names(species_models)
+    for (i in seq_len(n)) {
+      sp <- species[i]; sx <- sex[i]; pf <- pfas[i]
+      if (is.na(sp) || is.na(sx) || is.na(pf) || !(sp %in% sm_names)) { out[i] <- FALSE; next }
+      sm <- species_models[[sp]]
+      out[i] <- identical(pf, sm$PFAS) && identical(sx, sm$Sex)  # PFOS + sex=Male in your list
+    }
+    out
+  }
+  
+  # Simple TK availability: all required columns exist & are non-NA for the combo
+  simple_required <- list(
+    `single-compartment` = c("Volume_of_Distribution_L_per_kg","Half_Life_hr"),
+    `two-compartment`    = c("Volume_of_Distribution_L_per_kg","Half_Life_hr","Absorption_Coefficient_unitless")
+  )
+  is_simple_supported <- function(pfas, species, sex, model) {
+    req_cols <- simple_required[[model]]
+    if (is.null(req_cols) || !all(req_cols %in% names(tk_params))) return(rep(FALSE, length(pfas)))
+    keys_ok <- tk_params |>
+      dplyr::filter(dplyr::if_all(dplyr::all_of(req_cols), ~ !is.na(.))) |>
+      dplyr::mutate(.key = paste(PFAS, Species, Sex, sep="|")) |>
+      dplyr::distinct(.key)
+    (paste(pfas, species, sex, sep="|") %in% keys_ok$.key)
+  }
+  
+  # Generic TK availability (= do we have the required, non-NA params in tk_params?)
+  has_params_for <- function(pfas, species, sex, needs) {
+    rows <- tk_params %>% dplyr::filter(PFAS==pfas, Species==species, Sex==sex)
+    nrow(rows) > 0 && all(needs %in% names(rows)) && all(stats::complete.cases(rows[1, needs]))
+  }
+  
+  
+  # Robust normalizers
+  normalize_text <- function(x) {
+    x <- as.character(x)
+    x <- gsub("[\u00A0\u2007\u202F]", " ", x, perl = TRUE)   # non-breaking spaces → space
+    x <- trimws(x)
+    x
+  }
+  
+  normalize_pfas <- function(x) {
+    x <- normalize_text(x)
+    x <- toupper(x)
+    x <- gsub("[^A-Z0-9+.-]", "", x)  # drop stray punctuation/Unicode
+    # unify common synonyms (extend as needed)
+    x <- dplyr::recode(x,
+                       "HFPO-DA" = "GENX",
+                       "HFPO_DA" = "GENX",
+                       "HEXAFLUOROPROPYLENEOXIDEDIMERACID" = "GENX",
+                       .default = x
+    )
+    x
+  }
+  
+  norm_keys <- function(df) {
+    force(df)
+    chr <- intersect(c("Species","PFAS","Sex","Model_Type","Compartment"), names(df))
+    for (c in chr) df[[c]] <- normalize_text(df[[c]])
+    if ("PFAS" %in% names(df)) df$PFAS <- normalize_pfas(df$PFAS)
+    df
+  }
+  
+  time_key_days <- function(t_days) round(t_days * 24, 6) / 24  # nearest hour
+  
+  closest_join_multi <- function(exp_df, sim_df, comps = NULL, tol_hours = Inf) {
+    gvars   <- c("Species","PFAS","Sex","Model_Type")
+    numvars <- c("Dose_mg_per_kg","Exposure_Duration_Days","Interval_Hours")
+    
+    # sanity
+    must <- c(gvars, "Time_key", "Compartment", "Time", "Concentration", numvars)
+    miss <- setdiff(c("Time_key","Compartment","Time","Concentration"), names(sim_df))
+    if (length(miss)) stop("sim_df missing columns: ", paste(miss, collapse = ", "))
+    
+    # which compartments to try
+    if (is.null(comps)) comps <- sort(unique(sim_df$Compartment))
+    
+    exp_df <- exp_df %>% dplyr::mutate(exp_id = dplyr::row_number())
+    
+    purrr::map_dfr(seq_len(nrow(exp_df)), function(i) {
+      e <- exp_df[i, ]
+      
+      # group by categories
+      sgrp <- sim_df %>% dplyr::semi_join(e[gvars], by = gvars)
+      if (!nrow(sgrp)) {
+        # return one NA row per requested compartment
+        return(purrr::map_dfr(comps, ~ dplyr::bind_cols(
+          e,
+          tibble::tibble(Compartment = .x, Time = NA_real_, Concentration = NA_real_)
+        )))
+      }
+      
+      # exact numeric keys (when present)
+      exact <- sgrp
+      for (v in numvars) {
+        if (!is.na(e[[v]])) exact <- exact %>% dplyr::filter(.data[[v]] == e[[v]])
+      }
+      cand0 <- if (nrow(exact)) exact else sgrp
+      
+      # do one pick per compartment
+      comps_avail <- intersect(comps, unique(cand0$Compartment))
+      purrr::map_dfr(comps_avail, function(cp) {
+        cand <- cand0 %>% dplyr::filter(Compartment == cp)
+        if (!nrow(cand)) {
+          return(dplyr::bind_cols(
+            e, tibble::tibble(Compartment = cp, Time = NA_real_, Concentration = NA_real_)
+          ))
+        }
+        
+        dist <- abs(cand$Time_key - e$Time_key)
+        if (is.finite(tol_hours)) {
+          bad <- abs(cand$Time_key - e$Time_key) > tol_hours/24
+          dist[bad] <- Inf
+        }
+        # add numeric-key distances (0 if exact/missing)
+        for (v in numvars) {
+          add <- if (!is.na(e[[v]])) abs(cand[[v]] - e[[v]]) else 0
+          dist <- dist + add
+        }
+        
+        k <- which.min(dist)
+        if (!length(k) || is.infinite(dist[k])) {
+          dplyr::bind_cols(
+            e, tibble::tibble(Compartment = cp, Time = NA_real_, Concentration = NA_real_)
+          )
+        } else {
+          dplyr::bind_cols(e, cand[k, c("Compartment","Time","Concentration")])
+        }
+      })
+    }) %>% dplyr::select(-exp_id)
+  }
+  
+  
   ############################### Concentration-time Plot ##############
   # Render concentration-time plot with dynamic xlim
   output$concentrationPlot <- renderPlotly({
@@ -2243,7 +2808,7 @@ server <- function(input, output, session) {
       dplyr::mutate(
         PFAS = as.factor(PFAS),
         Compartment = dplyr::recode(Compartment,
-                                    Plasma="Plasma", Central="Central", Blood="Blood",
+                                    Plasma="Plasma", Blood="Blood", 
                                     Liver="Liver", Kidneys="Kidneys", Gut="Gut", Rest="Rest",
                                     .default = as.character(Compartment)
         ),
@@ -2253,7 +2818,7 @@ server <- function(input, output, session) {
     # build a stable linetype set (so legend order doesn’t jump)
     all_combo_levels <- sort(unique(interaction(
       c("PBPK","single-compartment","two-compartment","biphasic","MassTransferPBPK"),
-      c("Plasma","Central","Blood","Liver","Kidneys","Gut","Rest"),
+      c("Plasma", "Blood","Liver","Kidneys","Gut","Rest"),
       sep = " • "
     )))
     base_lts <- c("solid","longdash","dotdash","twodash","dotted")
@@ -2313,43 +2878,78 @@ server <- function(input, output, session) {
   })
   
   
-  # Render scatter plot for modeled vs. measured concentrations
   output$scatterPlot <- renderPlotly({
     sim_results <- simulation_results()
-    exp_data <- experiment_data() %>% dplyr::filter(!is.na(Time_Serum_Collected_hr)) %>%
-      mutate(Time_in_days = Time_Serum_Collected_hr / 24)
+    if (is.null(sim_results) || !nrow(sim_results)) return(NULL)
     
-    # filter by the new multi-selects
+    # --- fallbacks like your time-series plot ---
+    species_sel <- if (is.null(input$flt_species) || !length(input$flt_species)) unique(sim_results$Species) else input$flt_species
+    pfas_sel    <- if (is.null(input$flt_pfas)    || !length(input$flt_pfas))    unique(sim_results$PFAS)    else input$flt_pfas
+    model_sel   <- if (is.null(input$flt_model)   || !length(input$flt_model))   unique(sim_results$Model_Type) else input$flt_model
+    comp_sel    <- if (is.null(input$flt_comp)    || !length(input$flt_comp))    unique(sim_results$Compartment) else input$flt_comp
+    
+    num_keys <- c("Dose_mg_per_kg","Exposure_Duration_Days","Interval_Hours")
+    
+  
     sim_f <- sim_results %>%
-      dplyr::filter(
-        Species     %in% input$flt_species,
-        PFAS        %in% input$flt_pfas,
-        Model_Type  %in% input$flt_model,
-        Compartment %in% input$flt_comp
-      )
-    
-    measured_conc <- exp_data %>%
-      dplyr::left_join(sim_f,
-                       by = c("Time_in_days" = "Time", "Species","PFAS","Sex","Model_Type",
-                              "Dose_mg_per_kg","Exposure_Duration_Days","Interval_Hours")
+      norm_keys() %>%
+      filter(
+        Species %in% species_sel,
+        PFAS %in% pfas_sel,
+        Model_Type %in% model_sel
       ) %>%
-      dplyr::rename(modeled_concentration = Concentration) %>%
+      mutate(Time_key = time_key_days(Time)) %>%
+      filter(Compartment == "Plasma") %>%
+      mutate(across(all_of(num_keys), as.double))
+    
+    exp_data <- experiment_data() %>%
+      filter(!is.na(Time_Serum_Collected_hr)) %>%
+      norm_keys() %>%
+      mutate(
+        Time_in_days = Time_Serum_Collected_hr / 24,
+        Time_key     = time_key_days(Time_in_days)
+      ) %>%
+      mutate(across(all_of(num_keys), as.double)) %>%
+      # drop any uploaded columns that can collide with modeled ones
+      select(-any_of(c("Compartment","Concentration","Time")))
+    
+    measured_conc <- closest_join_multi(exp_data, sim_f, comps = "Plasma", tol_hours = 24) %>%
       dplyr::mutate(
+        modeled_concentration = Concentration,
         Legend_Label = paste(Species, PFAS, Model_Type, sep = " | ")
       )
     
-    rng <- range(c(measured_conc$modeled_concentration, measured_conc$Serum_Concentration_mg_L), na.rm = TRUE)
-    expanded_limits <- c(10^(floor(log10(min(rng)))), 10^(ceiling(log10(max(rng)))))
+    ### TEMP DEBUG
+    print(
+      measured_conc %>%
+        dplyr::count(Species, Sex, PFAS, Model_Type, Compartment, wt = !is.na(Time)) %>%
+        dplyr::arrange(PFAS, Model_Type, Compartment)
+    )
+    
+    
+    # guard: nothing matched
+    if (!nrow(measured_conc) || all(!is.finite(measured_conc$modeled_concentration))) return(NULL)
+    
+    vals <- c(measured_conc$modeled_concentration, measured_conc$Serum_Concentration_mg_L)
+    vals <- vals[is.finite(vals) & vals > 0]
+    if (!length(vals)) return(NULL)
+    
+    expanded_limits <- c(
+      10^(floor(log10(min(vals)))),
+      10^(ceiling(log10(max(vals))))
+    )
+    
+    
     
     p <- ggplot(measured_conc, aes(
       y = modeled_concentration, x = Serum_Concentration_mg_L,
-      color = PFAS, shape = Compartment,
+      color = PFAS, shape = Model_Type,
       text = paste(
         "Chemical:", PFAS, "<br>",
         "Species:", Species, "<br>",
         "Sex:", Sex, "<br>",
         "Model:", Model_Type, "<br>",
-        "Compartment:", Compartment, "<br>",
+        "Compartment: Plasma<br>",
         "Dose:", Dose_mg_per_kg, "mg/kg-d", "<br>",
         "Exposure:", Exposure_Duration_Days, "d<br>",
         "Interval:", Interval_Hours, "hrs<br>",
@@ -2360,19 +2960,21 @@ server <- function(input, output, session) {
       geom_point(size = 2, alpha = 0.9, na.rm = TRUE) +
       scale_x_log10(limits = expanded_limits) +
       scale_y_log10(limits = expanded_limits) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray10") +
+      geom_abline(slope = 1, intercept = 1/3,   linetype = "dashed", linewidth = 0.4, color = "gray50") +
+      geom_abline(slope = 1, intercept = -1/3,  linetype = "dashed", linewidth = 0.4, color = "gray50") +
       labs(
         title = "Modeled vs. Measured Concentration",
         x = "Measured (mg/L)", y = "Modeled (mg/L)",
-        color = "PFAS", shape = "Species"
+        color = "PFAS", shape = "Model"
       ) +
       theme_minimal(base_size = 15) +
       theme(legend.title = element_blank())
     
     session_store$scatterPlot <- ggplotly(p, tooltip = "text")
-    
-    print(session_store$scatterPlot)
+    session_store$scatterPlot
   })
+  
   
   #download button for scatterplotly widget
   output$download_scatterPlot_widget <- downloadHandler(
@@ -2433,234 +3035,268 @@ server <- function(input, output, session) {
   # Display concentration at specified time points in a table
   output$concentration_at_time <- renderDT({
     sim_results <- simulation_results()
-    exp_data <- experiment_data() %>% filter(!is.na(Time_Serum_Collected_hr))
+    if (is.null(sim_results) || !nrow(sim_results)) return(NULL)
     
-    # Pre-calculate time in days for joining
-    exp_data <- exp_data %>%
-      mutate(Time_in_days = Time_Serum_Collected_hr / 24)
+    num_keys <- c("Dose_mg_per_kg","Exposure_Duration_Days","Interval_Hours")
     
-    # Join with sim_results
-    data <- exp_data %>%
-      left_join(sim_results, by = c("Time_in_days" = "Time", "Species" = "Species", "PFAS", "Sex", "Model_Type", "Dose_mg_per_kg", "Exposure_Duration_Days", "Interval_Hours")) %>%
-      rename("Predicted Concentration @ Hr Serum Collected (mg/L)" = Concentration,
-             "Model" = Model_Type,
-             "Dose (mg/kg)" = Dose_mg_per_kg,
-             "Dosing Interval" = Interval_Hours,
-             "Exposure (Days)" = Exposure_Duration_Days,
-             "Hr Serum Collected" = Time_Serum_Collected_hr,
-             "Measured Concentration (mg/L)" = Serum_Concentration_mg_L
-             ) %>% 
-      select(-Time_in_days) %>% 
-      mutate(across(c(PFAS, Species, Sex, Model), as.factor))
     
-    #build datatable
-      dt <- datatable(data,
-        rownames = F,
-        extensions = 'Buttons', #enable buttons extension
-        filter = "top",
-        options = list(pageLength = 25, autoWidth = TRUE,  width = '100%', scrollX = TRUE,
-                       dom = 'Blrtip', 
-                       buttons = list(
-                         # insert buttons with copy and print
-                         # colvis includes the button to select and view only certain columns in the output table
-                         # from https://rstudio.github.io/DT/extensions.html 
-                         I('colvis'), 'copy', 
-                         # code for the first dropdown download button. this will download only the current page only (depends on the number of rows selected in the lengthMenu)
-                         # using modifier = list(page = "current")
-                         # only the columns visible will be downloaded using the columns:":visible" option from:
-                         list(extend = 'collection', buttons = list(list(extend = "csv", filename = "page",exportOptions = list(
-                           columns = ":visible",modifier = list(page = "current"))),
-                           list(extend = 'excel', filename = "page", title = NULL, 
-                                exportOptions = list(columns = ":visible",modifier = list(page = "current")))),
-                           text = 'Download current page'),
-                         # code for the  second dropdown download button
-                         # this will download the entire dataset using modifier = list(page = "all")
-                         list(extend = 'collection',
-                              buttons = list(list(extend = "csv", filename = "data",exportOptions = list(
-                                columns = ":visible",modifier = list(page = "all"))),
-                                list(extend = 'excel', filename = "data", title = NULL, 
-                                     exportOptions = list(columns = ":visible",modifier = list(page = "all")))),
-                              text = 'Download all data')),
-                       # add the option to display more rows as a length menu
-                       lengthMenu = list(c(10, 30, 50, -1),
-                                         c('10', '30', '50', 'All'))),class = "display"
-        ) %>% 
+    sim_keyed <- sim_results %>%
+      norm_keys() %>%
+      mutate(
+        Time_key = time_key_days(Time),
+        across(all_of(num_keys), as.double)
+      )
+    
+    exp_keyed <- experiment_data() %>%
+      filter(!is.na(Time_Serum_Collected_hr)) %>%
+      norm_keys() %>%
+      mutate(
+        Time_in_days = Time_Serum_Collected_hr / 24,
+        Time_key     = time_key_days(Time_in_days),
+        across(all_of(num_keys), as.double)
+      ) %>%
+      select(-any_of(c("Compartment","Concentration","Time")))
+    
+    data <- closest_join_multi(
+      exp_keyed, sim_keyed,
+      comps = c("Plasma","Blood","Liver","Kidneys","Gut","Rest"),
+      tol_hours = Inf
+    ) %>%
+      dplyr::rename(
+        "Predicted Concentration @ Hr Serum Collected (mg/L)" = Concentration,
+        "Model" = Model_Type,
+        "Dose (mg/kg)" = Dose_mg_per_kg,
+        "Dosing Interval" = Interval_Hours,
+        "Exposure (Days)" = Exposure_Duration_Days,
+        "Hr Serum Collected" = Time_Serum_Collected_hr,
+        "Measured Concentration (mg/L)" = Serum_Concentration_mg_L
+      ) %>%
+      dplyr::select(-Time_in_days, -Time_key, -Time) %>%
+      dplyr::mutate(across(c(PFAS, Species, Sex, Model, Compartment), as.factor))
+    
+
+    
+    dt <- datatable(
+      data,
+      rownames = FALSE,
+      extensions = 'Buttons',
+      filter = "top",
+      options = list(
+        pageLength = 25, autoWidth = TRUE, width = '100%', scrollX = TRUE,
+        dom = 'Blrtip',
+        buttons = list(
+          I('colvis'), 'copy',
+          list(
+            extend = 'collection',
+            buttons = list(
+              list(extend = "csv",   filename = "page",
+                   exportOptions = list(columns = ":visible", modifier = list(page = "current"))),
+              list(extend = "excel", filename = "page", title = NULL,
+                   exportOptions = list(columns = ":visible", modifier = list(page = "current")))
+            ),
+            text = 'Download current page'
+          ),
+          list(
+            extend = 'collection',
+            buttons = list(
+              list(extend = "csv",   filename = "data",
+                   exportOptions = list(columns = ":visible", modifier = list(page = "all"))),
+              list(extend = 'excel', filename = "data", title = NULL,
+                   exportOptions = list(columns = ":visible", modifier = list(page = "all")))
+            ),
+            text = 'Download all data'
+          )
+        ),
+        # <-- keep lengthMenu INSIDE options
+        lengthMenu = list(c(10, 30, 50, -1), c('10', '30', '50', 'All'))
+      ),
+      class = "display"   # <-- keep class as an arg to datatable()
+    ) %>%
       formatStyle(
         target = 'row',
         backgroundColor = styleEqual(
-          c("PBPK", "single-compartment", "two-compartment", "biphasic", "MassTransferPBPK"), 
-          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD1","#5A8356")
+          c("PBPK", "single-compartment", "two-compartment", "biphasic", "MassTransferPBPK"),
+          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD1", "#5A8356")
         ),
-        columns = "Model"  # Specifies to base coloring on the data_available column
-      ) 
+        columns = "Model"
+      )
     
-    # Identify numeric columns
-    numeric_cols <- names(data)[sapply(data, is.numeric)]
-    
-    # Apply formatting for significant digits to numeric columns
-    for (col in numeric_cols) {
-      dt <- dt %>% formatSignif(columns = col, digits = 3)
-    }
-    
-     dt   
+  
+  # format numerics
+  numeric_cols <- names(data)[sapply(data, is.numeric)]
+  for (col in numeric_cols) {
+    dt <- dt %>% formatSignif(columns = col, digits = 3)
+  }
+  dt
   })
+
 
 ########################################## Calculate Summary Statistics ############  
   # Calculate summary statistics (C_max, C_TWA, AUC) for a specified time period
   summary_stats <- reactive({
-    print("Calculating summary statistics...")
+    message("Calculating summary statistics (serum/plasma only)...")
     
-    # Manually check if the simulation results exist and are valid
     sim_results <- simulation_results()
-    if (is.null(sim_results) || nrow(sim_results) == 0) {
-      return(NULL)
-    }
+    if (is.null(sim_results) || nrow(sim_results) == 0) return(NULL)
     
-    sim_results %>%
-      #get experimental input data
-      left_join(experiment_data(),
-                by = c("PFAS", "Species", "Sex", "Model_Type", "Dose_mg_per_kg", "Interval_Hours", "Exposure_Duration_Days")) %>% 
-      group_by(Species, PFAS, Sex, Model_Type, Dose_mg_per_kg, Interval_Hours, Exposure_Duration_Days) %>%
-      summarize(
-        C_max = max(Concentration),
-        AUC = {
-          time_subset <- Time >= 0 & Time <= Exposure_Duration_Days
-          calculate_auc(Time[time_subset], Concentration[time_subset])
-        },
-        C_TWA = ifelse(!is.na(AUC), AUC / Exposure_Duration_Days, NA)  # Avoid division by zero or NA
+    # Keep *plasma/serum only* across all model types (MassTransferPBPK included)
+    serum_only <- sim_results %>%
+      dplyr::filter(Compartment == "Plasma")
+    
+    serum_only %>%
+      # bring in exposure window per-row to truncate AUC correctly
+      dplyr::left_join(
+        experiment_data(),
+        by = c("PFAS","Species","Sex","Model_Type",
+               "Dose_mg_per_kg","Interval_Hours","Exposure_Duration_Days")
       ) %>%
-      ungroup() %>% 
-      distinct() %>% 
-      mutate(across(c(C_max, AUC, C_TWA), ~ signif(.x, 3)))
+      dplyr::group_by(Species, PFAS, Sex, Model_Type,
+                      Dose_mg_per_kg, Interval_Hours, Exposure_Duration_Days) %>%
+      dplyr::summarize(
+        C_max = max(Concentration, na.rm = TRUE),
+        # Time is in *days* everywhere in the app
+        AUC_day = {
+          ok <- is.finite(Time) & is.finite(Concentration) &
+            Time >= 0 & Time <= Exposure_Duration_Days
+          if (!any(ok)) NA_real_ else calculate_auc(Time[ok], Concentration[ok])
+        },
+        .groups = "drop"
+      ) %>%
+      # Report AUC in mg*hr/L (multiply day-integral by 24).
+      # TWA should be mg/L, so use AUC_day / days.
+      dplyr::mutate(
+        AUC  = AUC_day * 24,                                # mg*hr/L
+        C_TWA = dplyr::if_else(Exposure_Duration_Days > 0,
+                               AUC_day / Exposure_Duration_Days,  # mg/L
+                               NA_real_)
+      ) %>%
+      dplyr::select(-AUC_day) %>%
+      dplyr::mutate(dplyr::across(c(C_max, AUC, C_TWA), ~ signif(.x, 3)))
   })
+  
 
   ##### Summary Stats Table #####
   # Render the summary statistics table with export options
   output$summary_table <- renderDT({
-    print("Rendering summary table...")
-
-    # Get the summary statistics
-    summary <- summary_stats() %>% 
-      rename("Model" = Model_Type,
-             "Dose (mg/kg)" = Dose_mg_per_kg,
-             "Exposure (Days)" = Exposure_Duration_Days,
-             "Maximum Serum Concentration (mg/L)" = C_max,
-             "Area Under Curve Serum Concentration (mg*hr/L)" = AUC,
-             "Time-Weighted Average Serum Concentration (mg/L)" = C_TWA)
-
-    # Manually check if the summary statistics exist and are valid
-    if (is.null(summary) || nrow(summary) == 0) {
-      return(NULL)
-    }
-
-    datatable(summary,
-              rownames = F,
-              extensions = 'Buttons', #enable buttons extension
-              filter = "top",
-              options = list(pageLength = 25, autoWidth = TRUE,  width = '100%', scrollX = TRUE,
-                             dom = 'Blrtip', 
-                             buttons = list(
-                               # insert buttons with copy and print
-                               # colvis includes the button to select and view only certain columns in the output table
-                               # from https://rstudio.github.io/DT/extensions.html 
-                               I('colvis'), 'copy', 
-                               # code for the first dropdown download button. this will download only the current page only (depends on the number of rows selected in the lengthMenu)
-                               # using modifier = list(page = "current")
-                               # only the columns visible will be downloaded using the columns:":visible" option from:
-                               list(extend = 'collection', buttons = list(list(extend = "csv", filename = "page",exportOptions = list(
-                                 columns = ":visible",modifier = list(page = "current"))),
-                                 list(extend = 'excel', filename = "page", title = NULL, 
-                                      exportOptions = list(columns = ":visible",modifier = list(page = "current")))),
-                                 text = 'Download current page'),
-                               # code for the  second dropdown download button
-                               # this will download the entire dataset using modifier = list(page = "all")
-                               list(extend = 'collection',
-                                    buttons = list(list(extend = "csv", filename = "data",exportOptions = list(
-                                      columns = ":visible",modifier = list(page = "all"))),
-                                      list(extend = 'excel', filename = "data", title = NULL, 
-                                           exportOptions = list(columns = ":visible",modifier = list(page = "all")))),
-                                    text = 'Download all data')),
-                             # add the option to display more rows as a length menu
-                             lengthMenu = list(c(10, 30, 50, -1),
-                                               c('10', '30', '50', 'All'))),class = "display"
-    ) %>% 
-      formatStyle(
-        target = 'row',
-        backgroundColor = styleEqual(
-          c("PBPK", "single-compartment", "two-compartment", "biphasic"), 
-          c("#3A9AB2", "#6FB2C1", "#91BAB6", "#91BAD6")
+    message("Rendering summary table...")
+    
+    summary <- summary_stats() %>%
+      dplyr::rename(
+        "Model" = Model_Type,
+        "Dose (mg/kg)" = Dose_mg_per_kg,
+        "Exposure (Days)" = Exposure_Duration_Days,
+        "Maximum Serum Concentration (mg/L)" = C_max,
+        "Area Under Curve Serum Concentration (mg·hr/L)" = AUC,
+        "Time-Weighted Average Serum Concentration (mg/L)" = C_TWA
+      )
+    
+    if (is.null(summary) || nrow(summary) == 0) return(NULL)
+    
+    # Use your global model_type_colors defined up top
+    mt_cols_names  <- names(model_type_colors)
+    mt_cols_values <- unname(model_type_colors)
+    
+    datatable(
+      summary,
+      rownames = FALSE,
+      extensions = 'Buttons',
+      filter = "top",
+      options = list(
+        pageLength = 25, autoWidth = TRUE, width = '100%', scrollX = TRUE,
+        dom = 'Blrtip',
+        buttons = list(
+          I('colvis'), 'copy',
+          list(extend = 'collection',
+               buttons = list(
+                 list(extend = "csv",   filename = "page",
+                      exportOptions = list(columns = ":visible", modifier = list(page = "current"))),
+                 list(extend = 'excel', filename = "page", title = NULL,
+                      exportOptions = list(columns = ":visible", modifier = list(page = "current")))
+               ),
+               text = 'Download current page'),
+          list(extend = 'collection',
+               buttons = list(
+                 list(extend = "csv",   filename = "data",
+                      exportOptions = list(columns = ":visible", modifier = list(page = "all"))),
+                 list(extend = 'excel', filename = "data", title = NULL,
+                      exportOptions = list(columns = ":visible", modifier = list(page = "all")))
+               ),
+               text = 'Download all data')
         ),
-        columns = "Model"  # Specifies to base coloring on the data_available column
-      )# %>%
-      #formatSignif(columns = c("Maximum Serum Concentration (mg/L)", "Area Under Curve Serum Concentration (mg*hr/L)", "Time-Weighted Average Serum Concentration (mg/L)"),
-       #            digits = 4)
+        lengthMenu = list(c(10, 30, 50, -1), c('10', '30', '50', 'All'))
+      ),
+      class = "display"
+    ) %>%
+      formatStyle(
+        target  = 'row',
+        columns = "Model",
+        backgroundColor = styleEqual(mt_cols_names, mt_cols_values)
+      )
   })
+  
 
 #### Summary stats heatmap ####
   output$heatmap <- renderPlotly({
-    
     params_heat <- summary_stats() %>%
-      pivot_longer(
+      tidyr::pivot_longer(
         cols = c("C_max", "C_TWA", "AUC"),
         names_to = "Metric",
         values_to = "Value"
       ) %>%
-      mutate(Metric = case_when(
-        Metric == "C_max" ~ "Maximum Serum Concentration (mg/L)",
-        Metric == "AUC" ~ "Area Under the Curve Serum Concentration (mg*hr/L)",
-        Metric == "C_TWA" ~ "Time-Weighted Average Serum Concentration (mg/L)")) %>% 
-      group_by(Metric) %>%
-      mutate(
+      dplyr::mutate(
+        Metric = dplyr::recode(Metric,
+                               C_max = "Maximum Serum Concentration",
+                               AUC   = "Area Under the Curve (serum)",
+                               C_TWA = "Time-Weighted Average Serum Concentration"
+        ),
+        Units = dplyr::case_when(
+          Metric == "Area Under the Curve (serum)" ~ "mg·hr/L",
+          TRUE                                     ~ "mg/L"
+        )
+      ) %>%
+      dplyr::group_by(Metric) %>%
+      dplyr::mutate(
         normalized_value = (Value - min(Value, na.rm = TRUE)) /
           (max(Value, na.rm = TRUE) - min(Value, na.rm = TRUE))
       ) %>%
-      ungroup() %>%
-      arrange(PFAS) %>%
-      ggplot(aes(
+      dplyr::ungroup() %>%
+      dplyr::arrange(PFAS) %>%
+      ggplot2::ggplot(ggplot2::aes(
         x = Metric,
-        y = paste(PFAS, Sex, Species, Model_Type, sep = " - "), 
-        group = interaction(Species, PFAS, Sex, Model_Type, Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg), # Explicit grouping
+        y = paste(PFAS, Sex, Species, Model_Type, sep = " - "),
+        group = interaction(Species, PFAS, Sex, Model_Type,
+                            Exposure_Duration_Days, Interval_Hours, Dose_mg_per_kg),
         fill = normalized_value + 0.001,
         text = paste0(
           "Chemical: ", PFAS, "<br>",
           "Species: ", Species, "<br>",
           "Sex: ", Sex, "<br>",
-          "Exposure Duration: ", Exposure_Duration_Days, " days", "<br>",
-          "Dose: ", Dose_mg_per_kg, " mg/kg", "<br>",
-          "Model Type: ", Model_Type, "<br>",
-          "Computed Metric: ", Metric, "<br>",
-          "Value: ", signif(Value,2), " mg/L"
+          "Exposure: ", Exposure_Duration_Days, " d<br>",
+          "Dose: ", Dose_mg_per_kg, " mg/kg<br>",
+          "Model: ", Model_Type, "<br>",
+          "Metric: ", Metric, "<br>",
+          "Value: ", signif(Value, 3), " ", Units
         )
       )) +
-      geom_tile(color = "white") +
-      scale_fill_gradient(
+      ggplot2::geom_tile(color = "white") +
+      ggplot2::scale_fill_gradient(
         trans = scales::log_trans(base = 10),
-        low = "#56B1F7",
-        high = "red4",
-        space = "Lab",
-        na.value = "grey50"
+        low = "#56B1F7", high = "red4", space = "Lab", na.value = "grey50"
       ) +
-      labs(
-        x = "Toxicokinetic Parameters",
-        y = "Chemical - Sex - Species - Model Type",
-        title = "Comparison of Computed Metrics",
-        subtitle = "Identical Exposure Duration (28 d) and Dose (1 mg/kg-d)"
-      ) +
-      theme_minimal(base_size = 15) +
-      theme(
-        axis.text.y = element_text(size = 14),  # Adjust the y-axis text size
-        axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
+      ggplot2::theme_minimal(base_size = 15) +
+      ggplot2::theme(
+        axis.text.y = ggplot2::element_text(size = 14),
+        axis.text.x = ggplot2::element_text(size = 12, angle = 90, hjust = 1),
+        plot.title = ggplot2::element_text(hjust = 0.5),
+        plot.subtitle = ggplot2::element_text(hjust = 0.5),
+        axis.title.x = ggplot2::element_blank(),
+        axis.title.y = ggplot2::element_blank(),
         legend.position = "none"
-      ) +
-      scale_x_discrete(labels = function(x) str_wrap(x, width = 15))  # Wrap x-axis text
-    
+      )
     
     ggplotly(params_heat, tooltip = "text")
   })
+  
   
   
 } # close server

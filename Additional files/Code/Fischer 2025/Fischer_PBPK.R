@@ -1,9 +1,14 @@
 Fischer_PBPK_mouse <- function(
     PFAS,
-    dose_mg_per_kg,
+    dose_mg_per_kg,                 # repeated oral dose per event (mg/kg); set 0 to disable
     exposure_duration_days,
-    interval_hours,
-    pfas_param_path = "Additional files/Datasets/Fischer/pfas_parameters.csv"
+    interval_hours,                  # hours between repeated oral doses; ignored if dose_mg_per_kg == 0
+    # dosing options
+    single_oral_dose_mg_per_kg = 0, # single bolus oral dose at t = 0 (mg/kg)
+    constant_oral_mg_per_kg_day = 0,# constant oral intake rate (mg/kg/day)
+    constant_iv_mg_per_kg_day = 0,  # constant IV intake rate (mg/kg/day)
+    pfas_param_path = "Additional files/Datasets/Fischer/pfas_parameters.csv",
+    extend_hours_post = 96 #hrs to extend following final dose
 ) {
   # --- Dependencies (namespaced for Shiny safety) ---
   if (!requireNamespace("deSolve", quietly = TRUE)) stop("Package 'deSolve' is required.")
@@ -31,16 +36,15 @@ Fischer_PBPK_mouse <- function(
   P_OAT3    <- pfas_params$P_OAT3
   
   # --- Simulation horizon & dosing schedule ---
-  t_end_sec <- exposure_duration_days * 86400
+  t_end_sec <- exposure_duration_days * 86400 + extend_hours_post * 3600 #extend 96hr or specific time post
   times_sec <- seq(0, t_end_sec, by = 3600)  # 1-hour resolution
   
-  # Body weight & oral dose per event (mg)
-  bw_g  <- 30
+  # Body weight
+  bw_g  <- 30 #body weight (g)
   bw_kg <- bw_g / 1000
-  dose_mg_each <- dose_mg_per_kg * bw_kg
   
   # --- Physiological constants ---
-  V_body <- 30
+  V_body <- 30 #body volume (cm^3)
   Q_blood_liver      <- 0.021
   Q_blood_gut        <- 0.025
   Q_blood_kidneys    <- 0.0217
@@ -157,6 +161,14 @@ Fischer_PBPK_mouse <- function(
   V_water_blood <- V_blood - V_SA_blood - V_Glob_blood - V_SP_blood - V_ML_blood
   V_sorb_blood  <- V_blood - V_water_blood
   
+  # Volume fractions in plasma (unitless, L_constituent / L_plasma)
+  VF_water_plasma <- 0.92800
+  VF_SA_plasma    <- 0.02940
+  VF_Glob_plasma  <- 0.02000
+  VF_SP_plasma    <- 0.02210
+  VF_ML_plasma    <- 0.00170
+  # Note: VF_plasma (plasma fraction of whole blood) ~ 0.60 but cancels in the final formula
+  
   # Excretion
   Q_feces   <- 3.48/86400
   Q_urine   <- 2.26/86400
@@ -171,6 +183,7 @@ Fischer_PBPK_mouse <- function(
   K_gut     <- V_water_gut / V_gut_tissue + V_FABP_gut / V_gut_tissue * K_FABP + V_SP_gut / V_gut_tissue * K_SP + V_ML_gut / V_gut_tissue * K_ML + V_SA_gut / V_gut_tissue * K_SA
   K_kidneys <- V_water_kidneys / V_kidneys_tissue + V_SA_kidneys / V_kidneys_tissue * K_SA + V_FABP_kidneys / V_kidneys_tissue * K_FABP + V_SP_kidneys / V_kidneys_tissue * K_SP + V_ML_kidneys / V_kidneys_tissue * K_ML
   K_rest    <- V_water_rest / V_rest_tissue + V_FABP_rest / V_rest_tissue * K_FABP + V_SP_rest / V_rest_tissue * K_SP + V_ML_rest / V_rest_tissue * K_ML + V_SA_rest / V_rest_tissue * K_SA
+  K_plasma  <- VF_water_plasma + VF_SA_plasma * K_SA + VF_Glob_plasma * K_Glob + VF_SP_plasma * K_SP + VF_ML_plasma * K_ML
   
   # Free fractions
   f_free_blood    <- 1/(1 + K_blood    * V_sorb_blood    / V_water_blood)
@@ -189,13 +202,12 @@ Fischer_PBPK_mouse <- function(
   k_des_kidneys <- 0.118
   k_des_rest    <- 0.118
   
-  # --- Initial conditions (IV dose = 0, oral dose via events) ---
+  # --- Initial conditions (IV bolus = 0; oral via events/constant input below) ---
   total_IV_dose <- 0
   C_blood_t0    <- total_IV_dose / V_blood
   C_free_blood_t0  <- C_blood_t0 * f_free_blood * V_blood / V_water_blood
   C_bound_blood_t0 <- C_blood_t0 * (1 - f_free_blood) * V_blood / V_sorb_blood
-  
-  C_gut_lumen_t0 <- 0  # no initial oral mass; comes via events
+  C_gut_lumen_t0 <- 0
   
   yini <- c(
     C_free_blood = C_free_blood_t0,
@@ -222,16 +234,51 @@ Fischer_PBPK_mouse <- function(
     Absorbed_total = 0
   )
   
+  # --- Dosing controls ---
+  # Continuous (mg/s) inputs derived from mg/kg/day parameters
+  amount_in_blood <- constant_iv_mg_per_kg_day * bw_kg / 86400    # goes to central blood
+  amount_in_gut   <- constant_oral_mg_per_kg_day * bw_kg / 86400  # goes to gut lumen
+  
+  # Event-based oral dosing (repeated &/or single bolus)
+  event_rows <- list()
+  
+  # Repeated oral dose events, if requested
+  if (!isTRUE(all.equal(dose_mg_per_kg, 0))) {
+    if (interval_hours <= 0) stop("interval_hours must be > 0 when dose_mg_per_kg > 0")
+    dose_mg_each <- dose_mg_per_kg * bw_kg
+    dose_times_h <- seq(0, exposure_duration_days * 24, by = interval_hours)
+    dose_times_s <- unique(pmax(0, pmin(exposure_duration_days * 24, dose_times_h))) * 3600
+    event_rows[[length(event_rows) + 1]] <- data.frame(
+      var = "C_gut_lumen",
+      time = dose_times_s,
+      value = dose_mg_each / V_gut_lumen,
+      method = "add"
+    )
+  }
+  
+  # Single oral bolus at t = 0, if requested
+  if (!isTRUE(all.equal(single_oral_dose_mg_per_kg, 0))) {
+    bolus_mg <- single_oral_dose_mg_per_kg * bw_kg
+    event_rows[[length(event_rows) + 1]] <- data.frame(
+      var = "C_gut_lumen",
+      time = 0,
+      value = bolus_mg / V_gut_lumen,
+      method = "add"
+    )
+  }
+  
+  dose_events <- if (length(event_rows)) do.call(rbind, event_rows) else NULL
+  events_list <- if (!is.null(dose_events) && nrow(dose_events) > 0) list(data = dose_events) else NULL
+  
   # --- ODE system ---
   rigidode <- function(t, y, parms) {
     with(as.list(y), {
-      # Influxes set to 0 (we deliver oral via events)
-      J_in_blood_free  <- 0
-      J_in_blood_bound <- 0
-      J_in_gut_lumen   <- 0
+      # Incoming fluxes (mg/s) from continuous inputs
+      J_in_blood_free  <- amount_in_blood * f_free_blood
+      J_in_blood_bound <- amount_in_blood * (1 - f_free_blood)
+      J_in_gut_lumen   <- amount_in_gut
       
       # Blood – central
-      f_bound_blood <- 1 - f_free_blood
       J_bound_free_blood <- k_des_blood * V_sorb_blood * (C_bound_blood - C_free_blood * K_blood)
       
       # Liver blood
@@ -349,17 +396,6 @@ Fischer_PBPK_mouse <- function(
     })
   }
   
-  # --- Oral dosing via events: add concentration to gut lumen at each dose time ---
-  if (interval_hours <= 0) stop("interval_hours must be > 0")
-  dose_times_h <- seq(0, exposure_duration_days * 24, by = interval_hours)
-  dose_times_s <- unique(pmax(0, pmin(exposure_duration_days * 24, dose_times_h))) * 3600
-  dose_events <- data.frame(
-    var = "C_gut_lumen",
-    time = dose_times_s,
-    value = dose_mg_each / V_gut_lumen,  # mg / cm^3 = mg/mL added to gut lumen
-    method = "add"
-  )
-  
   # --- Solve ---
   out <- deSolve::ode(
     y = yini,
@@ -367,18 +403,18 @@ Fischer_PBPK_mouse <- function(
     func = rigidode,
     parms = NULL,
     method = "lsoda",
-    events = list(data = dose_events)
+    events = events_list
   )
   res <- as.data.frame(out, check.names = FALSE)
   
   # --- Compute total concentration per major compartment ---
-  # helper closures
   total_conc <- function(C_free, C_bound, V_w, V_s, V_tot) (C_free * V_w + C_bound * V_s) / V_tot
   
   res$time_h <- res$time / 3600
   # Blood (central only)
   C_blood <- total_conc(res$C_free_blood, res$C_bound_blood, V_water_blood, V_sorb_blood, V_blood)
-  # Liver (tissue only; matches your “tissue concentration” definition)
+  C_plasma <- C_blood * (K_plasma / K_blood)  # convert blood to plasma concentration via composition-based conversion
+  # Liver (tissue only)
   C_liver <- total_conc(res$C_free_liver, res$C_bound_liver, V_water_liver, V_sorb_liver, V_liver)
   # Kidneys (tissue)
   C_kidneys <- total_conc(res$C_free_kidneys, res$C_bound_kidneys, V_water_kidneys, V_sorb_kidneys, V_kidneys)
@@ -390,6 +426,7 @@ Fischer_PBPK_mouse <- function(
   out_df <- dplyr::tibble(
     time_h = res$time_h,
     C_blood = C_blood,
+    C_plasma = C_plasma,
     C_liver = C_liver,
     C_kidneys = C_kidneys,
     C_gut = C_gut,
@@ -398,3 +435,38 @@ Fischer_PBPK_mouse <- function(
   
   out_df
 }
+
+########## EXAMPLE USAGE ##############
+# 1) Single oral bolus, no repeats
+#Fischer_PBPK_mouse("PFBS", dose_mg_per_kg = 0, exposure_duration_days = 30, interval_hours = 24,
+#                  single_oral_dose_mg_per_kg = 10)
+# 
+# # 2) Constant oral intake (5 mg/kg/day), no bolus/repeats
+# constant <- Fischer_PBPK_mouse("PFBS", dose_mg_per_kg = 5, exposure_duration_days = 30, interval_hours = 24,
+#                                constant_oral_mg_per_kg_day = 5)
+# # plot to test
+# constant_plot <- constant %>% 
+#   pivot_longer(cols = contains("C_"), names_to = "Compartment", values_to = "Concentration (mg/L)") %>% 
+#   ggplot(aes(x = time_h, y = `Concentration (mg/L)`, color = Compartment)) +
+#   geom_line() +
+#   scale_y_log10() +
+#   theme_minimal(base_size = 15)
+# 
+# plotly::ggplotly(constant_plot)
+ 
+# # 3) Constant IV intake (1 mg/kg/day) + daily oral (2 mg/kg per event)
+# Fischer_PBPK_mouse("PFBS", dose_mg_per_kg = 2, exposure_duration_days = 14, interval_hours = 24,
+#                    constant_iv_mg_per_kg_day = 1)
+
+# # 4) Repeat oral dose (daily gavage) (5 mg/kg/day)
+# repeat_dose <- Fischer_PBPK_mouse("PFBS", dose_mg_per_kg = 5, exposure_duration_days = 30, interval_hours = 24,
+#                                constant_oral_mg_per_kg_day = 0)
+# # plot to test
+# repeat_plot <- repeat_dose %>% 
+#   pivot_longer(cols = contains("C_"), names_to = "Compartment", values_to = "Concentration (mg/L)") %>% 
+#   ggplot(aes(x = time_h, y = `Concentration (mg/L)`, color = Compartment)) +
+#   geom_line() +
+#   scale_y_log10() +
+#   theme_minimal(base_size = 15)
+# 
+# plotly::ggplotly(repeat_plot)
