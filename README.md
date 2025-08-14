@@ -124,7 +124,7 @@ shiny::runApp("app.R")
 5. **Reset**
    - Restores the app to its default demo state.
 
-![walthrough](./assets/gifs/walkthrough.gif)
+![walthrough](./assets/WALKTHROUGH.gif)
 ---
 
 ## Data & Files
